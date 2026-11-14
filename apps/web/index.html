@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#202b30">
+<title>Daymark</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.mjs"></script>
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to tasks</a>
+<div class="shell">
+<aside class="sidebar"><a class="brand" href="/" aria-label="Daymark home"><span class="brand-mark" aria-hidden="true">◴</span>daymark</a><nav aria-label="Main navigation" id="navigation"></nav></aside>
+<main class="workspace" id="content" tabindex="-1">
+<header class="app-top"><span class="eyebrow">Your personal space</span><button id="add-task" class="add-task" disabled><span aria-hidden="true">+</span> Add task</button></header>
+<div id="connection" role="status" class="connection">Connecting to Daymark…</div>
+<div id="notice" role="status" class="notice" hidden></div>
+<section id="view" aria-busy="true"><h1>One thing at a time.</h1><p class="muted">Loading your tasks…</p></section>
+</main>
+</div>
+<dialog id="task-dialog" aria-labelledby="task-dialog-title">
+<form id="task-form">
+<h2 id="task-dialog-title">Add task</h2>
+<p id="form-error" class="error" role="alert" hidden></p>
+<label for="title">Task title</label><input id="title" name="title" required maxlength="200" autocomplete="off">
+<div class="form-grid"><div><label for="repeat">Repeat</label><select id="repeat" name="repeat"><option value="once">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div><div><label for="interval">Every <span id="interval-unit">interval</span></label><input id="interval" name="interval" type="number" min="1" max="365" step="1" required value="1"><span class="field-hint" id="interval-hint">Used for repeating tasks.</span></div></div>
+<label for="startDate">First due date</label><input id="startDate" name="startDate" type="date" required>
+<div class="form-grid"><div><label for="category">Category</label><input id="category" name="category" maxlength="60" value="Personal"></div><div><label for="priority">Priority</label><select id="priority" name="priority"><option value="0">Normal</option><option value="1">Medium</option><option value="2">High</option></select></div></div>
+<label for="notes">Notes <span class="muted">(optional)</span></label><textarea id="notes" name="notes" maxlength="2000" rows="4"></textarea>
+<footer><button type="button" data-close="task-dialog">Cancel</button><button type="submit" class="primary" id="save-task">Add task</button></footer>
+</form>
+</dialog>
+<dialog id="archive-dialog" aria-labelledby="archive-dialog-title"><h2 id="archive-dialog-title">Archive task?</h2><p id="archive-copy"></p><p class="muted">This removes the task from your active lists and keeps its completion history. There is no restore in this version.</p><p id="archive-error" class="error" role="alert" hidden></p><footer><button type="button" data-close="archive-dialog" autofocus>Cancel</button><button type="button" class="danger" id="confirm-archive">Archive task</button></footer></dialog>
+<noscript><p class="error">Daymark needs JavaScript enabled to load and manage your tasks.</p></noscript>
+</body>
+</html>

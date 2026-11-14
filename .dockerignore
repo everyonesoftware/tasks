@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!services/
+!services/server/
+!services/server/*.py
+!apps/
+!apps/web/
+!apps/web/**
+**/__pycache__/
+**/*.py[cod]
+**/.*

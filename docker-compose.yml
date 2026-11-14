@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/main/schema/compose-spec.json
+services:
+  tasks:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DAYMARK_HOST: "${DAYMARK_HOST:?Set DAYMARK_HOST to the hostname on your TLS certificate}"
+    command:
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --db
+      - /data/daymark.sqlite3
+      - --allowed-host
+      - "${DAYMARK_HOST:?Set DAYMARK_HOST to the hostname on your TLS certificate}"
+      - --public-origin
+      - "https://${DAYMARK_HOST}:${DAYMARK_PORT:-8787}"
+      - --tls-cert
+      - /certs/fullchain.pem
+      - --tls-key
+      - /certs/privkey.pem
+    ports:
+      - "${DAYMARK_BIND_IP:-0.0.0.0}:${DAYMARK_PORT:-8787}:8787"
+    volumes:
+      - type: volume
+        source: tasks-data
+        target: /data
+      - type: bind
+        source: "${DAYMARK_CERT_DIR:-./certs}"
+        target: /certs
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import http.client, json, os, socket, ssl
+          context = ssl.create_default_context(cafile='/certs/fullchain.pem')
+          with socket.create_connection(('127.0.0.1', 8787), timeout=5) as tcp:
+              with context.wrap_socket(tcp, server_hostname=os.environ['DAYMARK_HOST']) as tls:
+                  tls.sendall(b'GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+                  response = http.client.HTTPResponse(tls)
+                  response.begin()
+                  assert response.status == 200, response.status
+                  assert json.loads(response.read(65536))['status'] == 'ok'
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  tasks-data:
