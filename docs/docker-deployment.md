@@ -1,7 +1,8 @@
 # Deploy Tasks with Docker Compose
 
-Run commands from the repository root. Compose builds the Go API and web client
-into one image, with an HTTP backend published **only on host loopback**.
+Run commands from the repository root. Compose pulls the published
+`ghcr.io/everyonesoftware/tasks:latest` image containing the Go API and web client,
+with an HTTP backend published **only on host loopback**.
 Tailscale Serve on the same host supplies HTTPS for web and Android clients.
 No certificate files or TLS settings are needed in the container. The Tasks
 rebrand preserves database paths and other legacy configuration names; the
@@ -27,11 +28,11 @@ read. This sets the server's public HTTPS origin for Secure cookies and browser
 Origin/Referer validation, not its bind address or backend port. It does not
 configure DNS, certificates, or Tailscale Serve itself.
 
-## 2. Build, provision, and start
+## 2. Pull, provision, and start
 
 ```sh
 docker compose config --quiet
-docker compose build --pull
+docker compose pull
 docker compose run --rm --no-deps tasks create-user --db /data/daymark.sqlite3 --username dan
 docker compose up -d
 tailscale serve --bg http://127.0.0.1:8787
@@ -83,10 +84,10 @@ same Compose project name/directory to reuse the same project-scoped volume.
 for live backups, or stop the service before safely copying its database. Protect
 backups as private data; per-user `/api/export` is not a full database backup.
 
-After updating the checkout, rebuild and recreate the service:
+Pull the latest published image and recreate the service:
 
 ```sh
-docker compose build --pull
+docker compose pull
 docker compose up -d
 ```
 

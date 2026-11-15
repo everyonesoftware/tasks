@@ -1,6 +1,6 @@
 services:
   tasks:
-    build: .
+    image: ghcr.io/everyonesoftware/tasks:latest
     restart: unless-stopped
     read_only: true
     environment:

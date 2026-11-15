@@ -54,6 +54,16 @@ func TestDockerImageProvidesDefaultHealthcheck(t *testing.T) {
 	}
 }
 
+func TestComposeUsesPublishedGHCRImage(t *testing.T) {
+	config := rootFile(t, "docker-compose.yml")
+	if !strings.Contains(config, "    image: ghcr.io/everyonesoftware/tasks:latest\n") {
+		t.Error("Compose must use the repository's published GHCR image")
+	}
+	if strings.Contains(config, "build:") {
+		t.Error("Compose deployment must not require a local image build")
+	}
+}
+
 func TestComposeKeepsSecureDeploymentSettings(t *testing.T) {
 	config := rootFile(t, "docker-compose.yml")
 	for _, required := range []string{
@@ -96,6 +106,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	}
 	var config struct {
 		Services map[string]struct {
+			Image       string
 			ReadOnly    bool `json:"read_only"`
 			Command     []string
 			Environment map[string]string
@@ -116,6 +127,9 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	service, ok := config.Services["tasks"]
 	if !ok {
 		t.Fatal("tasks service missing")
+	}
+	if service.Image != "ghcr.io/everyonesoftware/tasks:latest" {
+		t.Errorf("unexpected deployment image: %q", service.Image)
 	}
 	if !service.ReadOnly {
 		t.Error("root filesystem must be read-only")
