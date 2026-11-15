@@ -7,16 +7,19 @@ import (
 
 func TestTasksContainerAndArtifactsKeepDeploymentIdentity(t *testing.T) {
 	dockerfile := rootFile(t, "Dockerfile")
-	for _, required := range []string{"COPY cmd/tasks/ ./cmd/tasks/", "-o /out/tasks ./cmd/tasks", "COPY --from=build /out/tasks /app/tasks", `ENTRYPOINT ["/app/tasks"]`, "org.opencontainers.image.title=\"Tasks\"", "USER 10001:10001"} {
+	for _, required := range []string{"COPY cmd/tasks/ ./cmd/tasks/", "-o /out/tasks ./cmd/tasks", "COPY --from=build /out/tasks /app/tasks", `ENTRYPOINT ["/app/docker-entrypoint.sh"]`, "org.opencontainers.image.title=\"Tasks\"", "USER 10001:10001"} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("container missing %q", required)
 		}
 	}
 	compose := rootFile(t, "docker-compose.yml")
-	for _, required := range []string{"tasks-data:/data", "/data/daymark.sqlite3", "DAYMARK_HOST"} {
+	for _, required := range []string{"tasks-data:/data", "DAYMARK_HOST"} {
 		if !strings.Contains(compose, required) {
 			t.Errorf("deployment compatibility missing %q", required)
 		}
+	}
+	if !strings.Contains(rootFile(t, "docker-entrypoint.sh"), "/data/daymark.sqlite3") {
+		t.Error("container database path changed")
 	}
 	workflow := rootFile(t, ".github/workflows/publish.yml")
 	for _, required := range []string{"name: Publish Tasks", "dist/android/Tasks-$DAYMARK_VERSION.apk", "name: Tasks-android-"} {

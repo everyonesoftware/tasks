@@ -27,9 +27,11 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /out/tasks /app/tasks
 COPY apps/web/ ./apps/web/
+COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
+ENV PATH="/app:${PATH}"
 
 USER 10001:10001
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD ["/app/tasks", "healthcheck", "--url", "http://127.0.0.1:8787/health"]
-ENTRYPOINT ["/app/tasks"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

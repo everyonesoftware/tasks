@@ -7,7 +7,7 @@ import (
 
 func TestDockerContextIncludesGoBuildInputsAndExcludesPrivateData(t *testing.T) {
 	ignore := rootFile(t, ".dockerignore")
-	for _, rule := range []string{"**", "!go.mod", "!go.sum", "!cmd/", "!cmd/tasks/", "!cmd/tasks/*.go", "!services/server/*.go", "!apps/web/**", "**/.*"} {
+	for _, rule := range []string{"**", "!docker-entrypoint.sh", "!go.mod", "!go.sum", "!cmd/", "!cmd/tasks/", "!cmd/tasks/*.go", "!services/server/*.go", "!apps/web/**", "**/.*"} {
 		found := false
 		for _, line := range strings.Split(ignore, "\n") {
 			if line == rule {

@@ -42,13 +42,20 @@ command. Follow any Tailscale prompt to enable HTTPS/Serve for your tailnet.
 Open `https://YOUR_TAILSCALE_HOST/`, then sign in. See the official
 [Tailscale Serve reference](https://tailscale.com/kb/1242/tailscale-serve).
 
-Compose deliberately uses the existing `--allow-insecure-http` opt-in for the
+The image's `docker-entrypoint.sh` supplies the normal server arguments; Compose
+only passes `DAYMARK_HOST`. Explicit commands such as `create-user` still override
+normal startup and do not require the hostname when invoking the image directly.
+The entrypoint uses the existing `--allow-insecure-http` opt-in for the
 local Docker bridge hop; `--public-origin` keeps session cookies Secure and browser
 writes restricted to the HTTPS origin. Do not expose the backend port on all
 interfaces, forward it publicly, or use this setup without the HTTPS proxy.
 Tailscale network access does not replace Tasks account authentication. The
 server's development-mode HTTP warning is expected with this explicit opt-in.
 All proxied clients share the backend's socket-peer login rate-limit bucket.
+The minimal Compose file leaves capabilities, privilege options and logging at
+Docker's defaults. The non-root image, read-only root filesystem, loopback-only
+published port and application authentication remain. Configure log rotation
+in the Docker daemon if you need it.
 
 Reset a password (also revokes that account's existing sessions):
 

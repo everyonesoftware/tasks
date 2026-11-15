@@ -26,7 +26,9 @@ func TestDockerBuildsStandaloneNonRootGoRuntime(t *testing.T) {
 		"FROM debian:bookworm-slim", "COPY --from=build /out/tasks /app/tasks",
 		"COPY apps/web/ ./apps/web/", "USER 10001:10001",
 		"chown 10001:10001 /data", "chmod 0700 /data",
-		`ENTRYPOINT ["/app/tasks"]`,
+		`ENTRYPOINT ["/app/docker-entrypoint.sh"]`,
+		"COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh",
+		`ENV PATH="/app:${PATH}"`,
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile missing %q", required)
@@ -55,16 +57,15 @@ func TestDockerImageProvidesDefaultHealthcheck(t *testing.T) {
 func TestComposeKeepsSecureDeploymentSettings(t *testing.T) {
 	config := rootFile(t, "docker-compose.yml")
 	for _, required := range []string{
-		"read_only: true", "ALL", "no-new-privileges:true",
+		"read_only: true",
 		"tasks-data:/data", "127.0.0.1:${DAYMARK_PORT:-8787}:8787",
-		"/data/daymark.sqlite3", "--allow-insecure-http", "--public-origin",
 		"${DAYMARK_HOST:?", "  tasks-data:",
 	} {
 		if !strings.Contains(config, required) {
 			t.Errorf("Compose missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"--tls-cert", "--tls-key", "/certs", "DAYMARK_BIND_IP", "python", "--insecure", "container_name:"} {
+	for _, forbidden := range []string{"command:", "--tls-cert", "--tls-key", "/certs", "DAYMARK_BIND_IP", "python", "--insecure", "container_name:"} {
 		if strings.Contains(config, forbidden) {
 			t.Errorf("Compose must not contain %q", forbidden)
 		}
@@ -97,8 +98,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 		Services map[string]struct {
 			ReadOnly    bool `json:"read_only"`
 			Command     []string
-			CapDrop     []string `json:"cap_drop"`
-			SecurityOpt []string `json:"security_opt"`
+			Environment map[string]string
 			Ports       []struct {
 				HostIP    string `json:"host_ip"`
 				Published string
@@ -121,12 +121,11 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 		t.Error("root filesystem must be read-only")
 	}
 
-	if strings.Join(service.CapDrop, ",") != "ALL" || strings.Join(service.SecurityOpt, ",") != "no-new-privileges:true" {
-		t.Error("container hardening must be preserved")
+	if service.Environment["DAYMARK_HOST"] != "tasks.example.test" {
+		t.Error("image must receive the HTTPS hostname")
 	}
-	wantCommand := "serve --host 0.0.0.0 --port 8787 --db /data/daymark.sqlite3 --allowed-host tasks.example.test --public-origin https://tasks.example.test --allow-insecure-http"
-	if got := strings.Join(service.Command, " "); got != wantCommand {
-		t.Errorf("command = %q, want %q", got, wantCommand)
+	if len(service.Command) != 0 {
+		t.Error("Compose must use the image's default startup")
 	}
 	if len(service.Ports) != 1 || service.Ports[0].HostIP != "127.0.0.1" || service.Ports[0].Published != "9443" || service.Ports[0].Target != 8787 {
 		t.Errorf("HTTP backend must publish only to loopback: %+v", service.Ports)

@@ -1,22 +1,13 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/main/schema/compose-spec.json
 services:
   tasks:
     build: .
     restart: unless-stopped
-    init: true
     read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    command: >-
-      serve --host 0.0.0.0 --port 8787 --db /data/daymark.sqlite3
-      --allowed-host "${DAYMARK_HOST:?Set DAYMARK_HOST to your Tailscale HTTPS hostname}"
-      --public-origin "https://${DAYMARK_HOST}" --allow-insecure-http
+    environment:
+      DAYMARK_HOST: ${DAYMARK_HOST:?Set DAYMARK_HOST}
     ports:
       - "127.0.0.1:${DAYMARK_PORT:-8787}:8787"
-    volumes: ["tasks-data:/data"]
-    logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
-
+    volumes:
+      - tasks-data:/data
 volumes:
-  tasks-data: {}
+  tasks-data:
