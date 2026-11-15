@@ -43,6 +43,8 @@ case "$1 $2" in
   'release view')
     printf 'Tasks-137.apk\nSHA256SUMS\n'
     [[ $FAILURE == missing ]] || echo daymark-release.json
+    [[ $FAILURE == missing-windows-installer ]] || echo Tasks-Windows-137-Setup.exe
+    [[ $FAILURE == missing-windows-checksum ]] || echo Tasks-Windows-137-Setup.exe.sha256
     ;;
   *) exit 2 ;;
 esac
@@ -73,8 +75,8 @@ func TestAndroidWorkflowReleaseTagIdentity(t *testing.T) {
 	wrong := other + "\trefs/tags/v137\n"
 	annotated := object + "\trefs/tags/v137\n" + sha + "\trefs/tags/v137^{}\n"
 	// The tag object's SHA matches the build, but its peeled commit does not.
-	wrongAnnotated := lightweight + other + "\trefs/tags/v137^{}\n"
-	run := workflowRun(t, "Publish Android GitHub release")
+	wrongAnnotated := lightweight + other + "	refs/tags/v137^{}\n"
+	run := workflowRun(t, "Publish GitHub release")
 	for _, tc := range []struct {
 		name, before, after, failure string
 		wantError, wantCreate        bool
@@ -114,20 +116,20 @@ func TestAndroidWorkflowReleaseTagIdentity(t *testing.T) {
 
 func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 	workflow := rootFile(t, ".github/workflows/publish.yml")
-	_, android, ok := strings.Cut(workflow, "  android:\n")
-	if !ok || !strings.Contains(android, "    permissions:\n      contents: write\n") {
-		t.Fatal("Android publisher needs job-scoped contents: write")
+	_, release, ok := strings.Cut(workflow, "  release:\n")
+	if !ok || !strings.Contains(release, "    permissions:\n      contents: write\n") {
+		t.Fatal("combined publisher needs job-scoped contents: write")
 	}
-	if strings.Contains(strings.Split(workflow, "jobs:")[0], "contents: write") {
-		t.Fatal("release permission must not be workflow-wide")
+	if strings.Count(workflow, "contents: write") != 1 || strings.Contains(strings.Split(workflow, "jobs:")[0], "contents: write") {
+		t.Fatal("only the release job may write repository contents")
 	}
-	if !strings.Contains(android, "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}") {
+	if !strings.Contains(release, "    needs: [validate, android, windows]\n") || strings.Contains(release, "if: always()") {
+		t.Fatal("release must require successful validation and both platform jobs")
+	}
+	if !strings.Contains(release, "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}") {
 		t.Fatal("release step must authenticate with the workflow token")
 	}
-	if strings.Index(android, "- name: Publish Android GitHub release") < strings.Index(android, "- name: Upload signed Android APK") {
-		t.Fatal("release must follow successful verification and artifact upload")
-	}
-	run := workflowRun(t, "Publish Android GitHub release")
+	run := workflowRun(t, "Publish GitHub release")
 	for _, tc := range []struct {
 		name, remote, failure, wantLatest string
 		wantError                         bool
@@ -138,6 +140,8 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 		{"create fails or release exists", strings.Repeat("a", 40), "create", "true", true},
 		{"readback fails", strings.Repeat("a", 40), "view", "true", true},
 		{"missing asset", strings.Repeat("a", 40), "missing", "true", true},
+		{"missing Windows installer", strings.Repeat("a", 40), "missing-windows-installer", "true", true},
+		{"missing Windows checksum", strings.Repeat("a", 40), "missing-windows-checksum", "true", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output, err, log, _, _ := runAndroidReleaseWorkflow(t, run, tc.remote, tc.failure, "", strings.Repeat("a", 40)+"	refs/tags/v137\n")
@@ -150,7 +154,7 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 				}
 				return
 			}
-			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json"} {
+			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json", "dist/windows/Tasks-Windows-137-Setup.exe", "dist/windows/Tasks-Windows-137-Setup.exe.sha256"} {
 				if !strings.Contains(log, required) {
 					t.Errorf("release command missing %q: %s", required, log)
 				}

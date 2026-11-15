@@ -1,10 +1,11 @@
 # Tasks working rules
 
-One cohesive product: web, native Android, and a private single-user server. No commits or pushes without Dan's authorization.
+One cohesive product: web, native Android, native Windows, and a private single-user server. No commits or pushes without Dan's authorization.
 
 ## Ownership
 - `apps/web`: responsive HTML/CSS/JS client; relative same-origin `/api` calls.
 - `apps/android`: Kotlin/Compose client; configurable server base URL.
+- `apps/windows`: C#/WinUI Familiar client; authenticated API core and Windows-protected session envelope. See its scoped instructions and README for native versus compile-only gates.
 - `cmd/tasks`: Go CLI; `services/server`: Go HTTP API, recurrence engine, and pure-Go SQLite (`modernc.org/sqlite`).
 - `contracts/auth-and-updates.md`: authoritative authentication, server-only-data, connection and Android updater requirements. It supersedes old no-auth/cache assumptions in `contracts/api.md`; task JSON shapes stay compatible.
 - `mockups`: historical design artifacts, not production source.
@@ -14,6 +15,7 @@ One cohesive product: web, native Android, and a private single-user server. No 
 - Backend/deployment: `go test ./...` and `go vet ./...` (Go 1.26.11+). Build: `CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks`. Deployment tests: `go test ./tests/deployment -v`; validate Docker build/Compose when installed, without deploying live data.
 - Keep the independent Python release packaging helper/tests: `python3 -m unittest discover -s tests/release -v`.
 - Web helpers: Node built-in tests in `tests/web` plus browser tests against a real isolated API/database.
+- Windows: C# tests in `apps/windows/Tasks.Core.Tests` and `Tasks.Storage.Tests`, plus `node --test tests/windows/*.test.mjs`. Native publish/launch is a separate Windows gate; Linux compile checks are not distributable builds.
 - Android: source `/opt/data/tools/android-env.sh`, then from `apps/android` run `bash gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --console=plain --max-workers=2`.
 - Do not run concurrent Gradle builds in this checkout. Do not install or clear data on a personal device or another project's emulator. The Tasks validation AVD (legacy identifier `daymark-validation-api29`) uses emulator-5584; emulator-5582 belongs to another task.
 - Verify exact external URLs through `hermesdan.tail1a7c8f.ts.net:<port>` rather than assuming a container localhost is the user's desktop.

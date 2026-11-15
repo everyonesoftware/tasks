@@ -2,9 +2,11 @@
 
 `.github/workflows/publish.yml` runs on pushes to `main`, or manually on `main`.
 It tests the server/web first, then independently publishes the container and builds
-Android. After Android tests, lint, signing, APK verification and artifact upload
-succeed, it publishes a stable GitHub Release. It does not deploy a server, modify
-live databases, or install an APK.
+Android and Windows. One release job waits for both application jobs: Android tests,
+lint, signing and APK verification, plus the native Windows build and real installer
+lifecycle gate. Only then does it create the stable GitHub Release containing both
+clients. It does not deploy a server, modify live databases, or install on personal
+devices. The installer gate uses only a disposable hosted Windows runner.
 
 ## Shared version
 
@@ -22,8 +24,14 @@ For count `N`:
 - Android `versionCode`: integer `N`; `versionName`: string `N`.
 - Actions artifact: `Tasks-android-N`, containing `Tasks-N.apk`, `SHA256SUMS`, and
   `daymark-release.json`.
+- Windows executable version: `0.1.N`, file version `0.1.N.0`, with the exact source
+  SHA in its informational version. Windows requires `N <= 65534` because .NET
+  assembly-version components have a tighter bound than Android version codes.
+- Windows release assets: `Tasks-Windows-N-Setup.exe` and
+  `Tasks-Windows-N-Setup.exe.sha256`. The sidecar hashes the exact installer bytes
+  and does not replace Android's existing `SHA256SUMS`.
 - GitHub Release: tag `vN`, title `Tasks N`, targeting the exact build commit, with
-  those same three files attached and automatically generated release notes.
+  the three Android files and two Windows files attached, plus generated notes.
 
 Publishers are serialized, and `latest` is added only if the build SHA still matches
 the remote `main` head when choosing tags. Replaying an older workflow keeps its
@@ -74,9 +82,9 @@ The build verifies the actual APK signature, package name, version name,
 version code and non-debuggable status before uploading it. The manifest records
 the verified package/version, minimum SDK read from the APK and actual APK SHA256.
 
-## Android GitHub Releases
+## Combined Android and Windows GitHub Release
 
-Only the Android job receives `contents: write`; its release step authenticates
+Only the combined release job receives `contents: write`; its release step authenticates
 with the repository's `GITHUB_TOKEN`, without a separate PAT. Releases are public
 stable releases, not drafts or prereleases, and remain after the workflow artifact
 expires. The existing standalone packaging helper remains available for manual
@@ -91,10 +99,41 @@ for `vN` already exists, creation fails rather than replacing its APK or changin
 its tag. Failed
 asset uploads can leave a draft requiring explicit operator recovery; reruns do not
 silently overwrite an existing release. After creation, the job reads back that
-exact release and requires all three uploaded assets on a non-draft, non-prerelease
+exact release and requires all five uploaded assets on a non-draft, non-prerelease
 release before reporting success.
 
 The manifest enables the Android updater to discover the release. Download and
 installation still require explicit user action and Android installer confirmation;
 publishing never installs an update automatically. Container publication is
-independent: a container-job failure does not block a successful Android release.
+independent: a container-job failure does not block a successful combined application release.
+
+## Unsigned Windows installer
+
+The Windows job uses the native Windows 2025 build environment, the pinned .NET SDK
+from `apps/windows/global.json`, and the runner's Inno Setup compiler. It runs the
+Windows tests, publishes the actual self-contained x64 WinUI client, verifies its
+native runtime/merged PRI and source-bound file version, then compiles the installer.
+It never packages the Linux compile-only library. Missing native payloads, mixed-case
+duplicate files, linked files, private data, wrong architectures and version/source
+mismatches fail closed. No Windows signing certificate or signing secret is needed;
+unsigned distribution is explicit and Windows may display a SmartScreen warning.
+
+Installation is per-user, without administrator rights, under
+`%LOCALAPPDATA%\Programs\Tasks`, with a Start menu shortcut and a normal uninstaller.
+The Windows installation identity is stable. Task data remains server-only; uninstall
+does not delete the protected user-session directory or contact the server. There is
+no launch-at-sign-in registration or automatic updater/feed.
+
+Before publishing the installer artifact, CI installs it into an isolated runner-temp
+directory, launches the **installed** executable, requires a responsive rendered native
+window and screenshot, closes it, and uninstalls it. Registration/shortcut/install
+removal is checked independently. An existing Tasks install or user profile makes the
+gate refuse to run; it does not clear personal data. A bounded failed gate blocks the
+release, and its diagnostics are retained with `if: always()` separately from release
+assets. Neither a surviving process nor a Linux source test counts as native acceptance.
+
+Local Windows commands, installation limits and checks are in
+`apps/windows/README.md`. Adding these files locally does not run GitHub Actions or
+publish a release: an authorized push is still required. After that run, inspect the
+native screenshot and exact release assets before describing an installer as verified
+and available. Existing releases are never overwritten or backfilled automatically.

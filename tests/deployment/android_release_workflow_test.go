@@ -26,6 +26,9 @@ func workflowRun(t *testing.T, name string) string {
 	}
 	var lines []string
 	for line := range strings.SplitSeq(run, "\n") {
+		if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "          ") {
+			break // A final run step ends at the next job, not only the next step.
+		}
 		lines = append(lines, strings.TrimPrefix(line, "          "))
 	}
 	return strings.Join(lines, "\n")

@@ -1,6 +1,6 @@
 # Tasks
 
-A personal task app for web and native Android, using the approved **Focus + queue** design: one Current task, a daily progress bar, and a queue of what is still due.
+A personal task app for web, native Android, and a native Windows client in development, using the approved **Focus + queue** design: one Current task, a daily progress bar, and a queue of what is still due.
 
 Tasks is the new product name for Daymark, not a new installation identity. Existing databases, Android app ID/signing identity, sessions and `DAYMARK_*` configuration names stay unchanged; see [Rebranding and compatibility](docs/rebranding.md).
 
@@ -99,6 +99,10 @@ Release builds use an explicitly configured persistent signing identity. See **d
 
 The updater reads actual releases from `everyonesoftware/tasks`; a new release must include the signed APK and `daymark-release.json`. No release is fabricated or automatically published. A downloaded package or installer intent is not proof of a completed installation; the installed PackageManager version is authoritative.
 
+## Native Windows development
+
+The selected **Familiar** direction is implemented as a C#/WinUI 3 client in `apps/windows`, not a WebView. The first slice covers existing-account sign-in, protected session storage, Today/focus/queue, completion/undo, task creation, read-only Upcoming/Routines, and connection settings. The publishing workflow builds an unsigned per-user Windows installer, gates it on native install/launch/uninstall acceptance, and attaches it beside the APK in the same `vN` release. See [Windows build and acceptance](apps/windows/README.md) and [CI publishing](docs/ci-publishing.md) for commands and validation limits. The newly added installer workflow has not run until these changes are pushed; no Windows update feed is implemented.
+
 ## Backups and operational limits
 
 - Persist `.data/daymark.sqlite3` across container recreation, for example in a persistent Docker volume. It contains task records, account password hashes, and session hashes; protect it accordingly.
@@ -111,6 +115,7 @@ The updater reads actual releases from `everyonesoftware/tasks`; a new release m
 
 - `apps/web/`: dependency-free responsive browser UI.
 - `apps/android/`: native Android application.
+- `apps/windows/`: native C#/WinUI application and platform-independent authenticated client core, in development.
 - `cmd/tasks/`: Go CLI and server entry point.
 - `services/server/`: Go authentication, HTTP API, scheduling, SQLite.
 - `contracts/api.md`: task API and recurrence semantics.
