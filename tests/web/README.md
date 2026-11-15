@@ -26,7 +26,7 @@ Checks include first-login/current-origin display, actual HttpOnly cookie authen
 
 The persisted browser sign-out marker contains no task or credential data. Offline logout is local clearing, not proof of remote session revocation.
 
-The separate first-run runner starts a genuinely empty database and verifies the operator `setup-key` command, unauthenticated setup status, the single-form welcome, rejected keys, responsive desktop/mobile layout, cookie-backed first-account creation, no browser credential/task storage, first-task creation with independent read-back, reload/session restoration, setup lockout after provisioning, subsequent sign-in and fail-closed setup-status errors with Retry. It writes a JSON report plus desktop/phone screenshots under the reported scratch directory and never prints the generated setup key.
+The separate first-run runner starts a genuinely empty database and uses the setup key emitted in startup logs. It verifies unauthenticated setup status, the single-form welcome, rejected keys, responsive desktop/mobile layout, cookie-backed first-account creation, no browser credential/task storage, first-task creation with independent read-back, reload/session restoration, setup lockout after provisioning, subsequent sign-in and fail-closed setup-status errors with Retry. It writes a JSON report plus desktop/phone screenshots under a new scratch directory.
 
 ## Backend contract checks
 

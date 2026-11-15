@@ -33,13 +33,13 @@ CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks
 
 The examples below use that binary; `go run ./cmd/tasks` accepts the same subcommands and flags for development.
 
-For the **All in one** browser setup, start the server using the transport instructions below and generate a key against that same database:
+For the **All in one** browser setup, start the server using the transport instructions below and find `Setup key:` in its startup logs. To replace an expired key without restarting, generate a key against that same database:
 
 ```sh
 ./bin/tasks setup-key --db .data/daymark.sqlite3
 ```
 
-Open the server in your browser, paste the key into **Setup key**, choose a username/password, and select **Create account & start**. The key expires after 30 minutes; running the command again replaces it. Keep it out of chat, URLs, logs and source files. The command refuses once an account exists. A successful setup signs you in to an empty workspace with **Add your first task**.
+Open the server in your browser, paste the key into **Setup key**, choose a username/password, and select **Create account & start**. The key expires after 30 minutes; restarting an unconfigured server or running the command again replaces it. Keep server logs private and keys out of chat, URLs, shared log exports and source files. Once an account exists, startup emits no key and the command refuses. A successful setup signs you in to an empty workspace with **Add your first task**.
 
 Alternatively, create the first account directly, or add later accounts, from this directory:
 

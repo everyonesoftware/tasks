@@ -65,8 +65,9 @@ func (s *Store) CompleteSetup(key, username, password string) (map[string]any, e
 	return login, nil
 }
 
-// GenerateSetupKey explicitly rotates the sole operator-issued setup credential.
-// Only its SHA-256 digest is persisted; callers must not log the returned key.
+// GenerateSetupKey rotates the sole first-user setup credential.
+// Only its SHA-256 digest is persisted; disclose the key only to the operator
+// through startup logs or the explicit setup-key command.
 func (s *Store) GenerateSetupKey() (key, expiresAt string, err error) {
 	key = base64.RawURLEncoding.EncodeToString(randBytes(32))
 	hash, _ := tokenHash(key)

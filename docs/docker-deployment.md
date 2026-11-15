@@ -42,7 +42,8 @@ docker compose logs --tail=50 tasks
 
 If you changed `DAYMARK_PORT`, use that local port in the Serve command. Follow
 any Tailscale prompt to enable HTTPS/Serve for your tailnet. For a new database,
-generate a one-time setup key from an operator terminal:
+read `Setup key:` in the startup logs shown above. To replace an expired key
+without restarting, use an operator terminal:
 
 ```sh
 docker compose exec tasks tasks setup-key --db /data/daymark.sqlite3
@@ -51,10 +52,11 @@ docker compose exec tasks tasks setup-key --db /data/daymark.sqlite3
 Open `https://YOUR_TAILSCALE_HOST/`. The **All in one** welcome form asks for the
 setup key and your chosen username/password. Select **Create account & start**
 to enter the empty workspace. No default accounts or sample tasks are created.
-The key is shown only by the explicit administrator command, not in normal
-server logs. Treat it as a secret: do not paste it into chat, a URL, `.env` or a
-log file. It expires in 30 minutes; running the command again invalidates the
-previous key. Once an account exists, setup/key generation are disabled and the
+Keep server logs private: anyone with an active setup key can create the first
+account. Do not paste it into chat, a URL, `.env` or shared log exports.
+It expires in 30 minutes; restarting an unconfigured server or running the command
+again invalidates the previous key. Once an account exists, startup emits no key,
+setup/key generation are disabled and the
 browser shows sign-in instead. These commands require a build containing the
 first-run setup feature; an older image with no `setup-key` command must be
 updated before using browser setup.

@@ -50,6 +50,19 @@ func serve(cfg options, out, stderr io.Writer) int {
 		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 		scheme = "https"
 	}
+	setupRequired, err := store.SetupRequired()
+	if err != nil {
+		return fail()
+	}
+	if setupRequired {
+		key, expiresAt, err := store.GenerateSetupKey()
+		if err != nil {
+			return fail()
+		}
+		fmt.Fprintln(stderr, "WARNING: Keep server logs private; the setup key can create the first account.")
+		fmt.Fprintf(stderr, "Setup key: %s\n", key)
+		fmt.Fprintf(stderr, "Setup key expires at %s. Enter it on this server's first-user setup page over HTTPS. Restarting or generating another key invalidates this one.\n", expiresAt)
+	}
 	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(io.Discard, "", 0)}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

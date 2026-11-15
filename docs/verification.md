@@ -1,3 +1,13 @@
+# Startup setup-key logging — 2026-11-15
+
+- Unconfigured server startup now rotates a random 32-byte setup key and emits it to stderr with its 30-minute expiry and a warning to keep logs private. Configured servers emit no key. The explicit `setup-key` command remains available for rotation without restarting; HTTP never returns the key and SQLite still stores only its digest.
+- New subprocess lifecycle regression was observed RED before implementation and GREEN afterward. It verifies startup disclosure, restart rotation, old-key rejection, successful account creation using the new key, and suppression after setup. Tests use disposable databases only.
+- `go test ./...`, `go test -race ./...`, `go vet ./...`, `CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks`, all 35 Node behavior tests and `git diff --check` passed with Go 1.26.11.
+- Real Chromium setup acceptance consumed the startup-log key without an administrator key-generation command and passed first-account creation, cookie/session, competing-tab, first-task read-back and setup-lockout checks. Evidence: `/opt/data/cache/scratch/tasks-first-run-uKGsUc/setup-result.json`. Existing real-API browser acceptance also passed: `/opt/data/cache/scratch/daymark-go-acceptance-N2ik4h/web-result.json`.
+- No commit, push, deployment or live database changes. Android and release packaging are unchanged and were not rerun. The historical no-startup-disclosure behavior described below is superseded by this change.
+
+---
+
 # All in one first-run setup — 2026-11-15
 
 - Implemented the approved single-form web welcome: setup key, username and new password; successful first-account creation opens the real empty Focus + queue workspace. Returning users see sign-in. Setup detection failures fail closed with Retry, and no key/password/token/task payload is persisted by the client.

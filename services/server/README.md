@@ -16,15 +16,15 @@ Existing databases migrate in place without deleting tasks/completions. Legacy t
 
 ### First-user browser setup
 
-Start the server with your normal private database and generate a one-time key against the **same database**:
+Start the server with your normal private database and read `Setup key:` in its startup logs. To rotate an expired key without restarting, use the **same database**:
 
 ```sh
 ./bin/tasks setup-key --db /private/daymark.sqlite3
 ```
 
-The explicit command prints the key on stdout; normal server startup/logging does not. Keep that output private. Open the server's HTTPS origin (loopback HTTP only for development), enter the key and choose your username/password in the **All in one** welcome form. Success signs you in and opens the empty workspace. Do not put keys/passwords in URLs, source, `.env`, logs or chat.
+Startup emits the key to stderr only while no accounts exist; the explicit command prints a replacement on stdout. Keep server logs and command output private: an active key permits first-account creation. Open the server's HTTPS origin (loopback HTTP only for development), enter the key and choose your username/password in the **All in one** welcome form. Success signs you in and opens the empty workspace. Do not copy keys/passwords into URLs, source, `.env`, shared log exports or chat.
 
-The random 32-byte key is stored only as a SHA256 digest with a 30-minute expiry. Re-running `setup-key` replaces the previous key. The pending digest survives a server restart; an expired key needs explicit rotation. Both setup/key generation refuse after any account exists. Initial account insertion, key consumption and session creation are atomic across concurrent Store instances; invalid credentials or failed writes leave no partial account and do not consume the key. Creating the first account through `create-user` also closes web setup. No legacy tasks are assigned implicitly.
+The random 32-byte key is stored only as a SHA256 digest with a 30-minute expiry. Restarting an unconfigured server or re-running `setup-key` replaces the previous key. Configured servers emit no key, and both setup/key generation refuse after any account exists. Initial account insertion, key consumption and session creation are atomic across concurrent Store instances; invalid credentials or failed writes leave no partial account and do not consume the key. Creating the first account through `create-user` also closes web setup. No legacy tasks are assigned implicitly.
 
 ## Transport and startup
 

@@ -1,4 +1,4 @@
-// Real first-run acceptance: fresh SQLite, operator CLI, actual API and Chromium.
+// Real first-run acceptance: fresh SQLite, startup key, actual API and Chromium.
 // All credentials below are disposable fixtures, never a user's account.
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
@@ -20,7 +20,7 @@ let stderr = '';
 async function waitFor(fn, label, timeout=20000) {
   const end = Date.now()+timeout;
   while (Date.now()<end) { if (await fn()) return; await delay(80); }
-  throw new Error('Timed out: '+label+'; server stderr='+stderr);
+  throw new Error('Timed out: '+label);
 }
 try {
   server = spawn(binary, ['serve', '--port', '0', '--db', db], {stdio:['ignore','pipe','pipe']});
@@ -34,15 +34,9 @@ try {
   assert.deepEqual(await setupStatus.json(), {setupRequired:true});
   assert.equal(setupStatus.headers.get('cache-control'), 'no-store');
   checks.push('fresh server reports setup required, without credentials or task access');
-  const generateKey = () => {
-    const result = spawnSync(binary, ['setup-key', '--db', db], {encoding:'utf8'});
-    assert.equal(result.status, 0, result.stderr);
-    const key = result.stdout.trim();
-    assert.match(key, /^[A-Za-z0-9_-]{43,}$/);
-    assert.ok(!stdout.includes(key) && !stderr.includes(key), 'server must not log the setup key');
-    return key;
-  };
-  const setupKey = generateKey();
+  await waitFor(()=>/^Setup key: [A-Za-z0-9_-]{43}$/m.test(stderr), 'startup setup key');
+  const setupKey = stderr.match(/^Setup key: ([A-Za-z0-9_-]{43})$/m)[1];
+  checks.push('startup logs supply the one-time setup key without an administrator command');
   const profile = join(root, 'chromium');
   chrome = spawn('chromium', ['--headless','--no-sandbox','--disable-dev-shm-usage','--no-first-run','--no-default-browser-check','--remote-allow-origins=*','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'], {stdio:'ignore'});
   let port;
