@@ -1,51 +1,26 @@
 # Deploy Tasks with Docker Compose
 
-Run commands from the repository root. This setup builds the Go API binary and
-web client into one image and serves them over **direct HTTPS** on port 8787.
-Android connects to the same HTTPS origin. It does not include Android builds or
-publish an image/release. The Tasks rebrand preserves `DAYMARK_*` configuration
-names and existing database paths; see [Rebranding and compatibility](rebranding.md).
+Run commands from the repository root. Compose builds the Go API and web client
+into one image, with an HTTP backend published **only on host loopback**.
+Tailscale Serve on the same host supplies HTTPS for web and Android clients.
+No certificate files or TLS settings are needed in the container. The Tasks
+rebrand preserves `DAYMARK_*` names and database paths; see
+[Rebranding and compatibility](rebranding.md).
 
-## 1. Configure HTTPS
+## 1. Configure the hostname
 
-Install Docker Engine with the Docker Compose v2 plugin on the deployment host.
-Obtain a TLS certificate trusted by your browser and Android device, matching the
-hostname you will use. Certificate issuance/renewal and DNS are managed separately.
-Do not disable client certificate verification.
-
-Create a local `.env` file (already excluded from Git) with your actual values:
+Install Docker Engine, Docker Compose v2, and Tailscale on the deployment host.
+Create a local `.env` file (already excluded from Git):
 
 ```dotenv
-DAYMARK_HOST=tasks.example.com
-DAYMARK_PORT=8787
-DAYMARK_CERT_DIR=/absolute/path/to/daymark-certs
-# Optional: bind only to a specific host interface instead of all IPv4 interfaces.
-# DAYMARK_BIND_IP=127.0.0.1
+DAYMARK_HOST=hermesdan.tail1a7c8f.ts.net
+# Optional local backend port; this is NOT the public HTTPS port.
+# DAYMARK_PORT=8787
 ```
 
-The certificate directory must already exist and contain `fullchain.pem` and
-`privkey.pem`. It is mounted read-only and is not included in the image. The
-container runs as UID/GID **10001:10001**: give that identity read access to the
-certificate/key and traversal access to their directory, without making the
-private key world-readable. For example, on a normal rootful Linux Docker host,
-a dedicated certificate directory can be owned by root, grouped to GID 10001,
-with directory mode 0750, key mode 0640, and certificate mode 0644. Rootless/user
-namespace deployments may need different host-side UID/GID mappings.
-
-Certificate symlinks must resolve inside the mounted directory. Do not mount only
-an ACME `live` directory whose links point to an unmounted `archive` directory;
-use a dedicated directory with actual certificate/key files or an enclosing
-certificate tree. Keep keys outside `apps/web` and outside Git. Restart the
-service after replacing renewed certificates so it reloads them:
-
-```sh
-docker compose restart tasks
-```
-
-For Dan's tailnet hostname, set `DAYMARK_HOST=hermesdan.tail1a7c8f.ts.net` and use a
-trusted certificate for that exact hostname. The default resulting address is
-`https://hermesdan.tail1a7c8f.ts.net:8787/`. This file does not provision Tailscale,
-certificates, DNS, firewall rules, or public Internet access.
+Use the actual Tailscale HTTPS hostname of the Docker host, without a scheme,
+path, or port. Old `DAYMARK_CERT_DIR` and `DAYMARK_BIND_IP` settings are no longer
+used. The public origin is `https://$DAYMARK_HOST` on standard HTTPS port 443.
 
 ## 2. Build, provision, and start
 
@@ -54,15 +29,26 @@ docker compose config --quiet
 docker compose build --pull
 docker compose run --rm --no-deps tasks create-user --db /data/daymark.sqlite3 --username dan
 docker compose up -d
+tailscale serve --bg http://127.0.0.1:8787
+tailscale serve status
 docker compose ps
 docker compose logs --tail=50 tasks
 ```
 
 The account command asks for the password twice at a hidden terminal prompt; no
 password goes into `.env` or command-line arguments. No default accounts or tasks
-are created. Open `https://YOUR_HOST:8787/` (or your configured port), then sign in.
-Permit the chosen port only on the intended networks using the host firewall.
-Do not add `--allow-insecure-http` to make a deployment start.
+are created. If you changed `DAYMARK_PORT`, use that local port in the Serve
+command. Follow any Tailscale prompt to enable HTTPS/Serve for your tailnet.
+Open `https://YOUR_TAILSCALE_HOST/`, then sign in. See the official
+[Tailscale Serve reference](https://tailscale.com/kb/1242/tailscale-serve).
+
+Compose deliberately uses the existing `--allow-insecure-http` opt-in for the
+local Docker bridge hop; `--public-origin` keeps session cookies Secure and browser
+writes restricted to the HTTPS origin. Do not expose the backend port on all
+interfaces, forward it publicly, or use this setup without the HTTPS proxy.
+Tailscale network access does not replace Tasks account authentication. The
+server's development-mode HTTP warning is expected with this explicit opt-in.
+All proxied clients share the backend's socket-peer login rate-limit bucket.
 
 Reset a password (also revokes that account's existing sessions):
 
@@ -92,23 +78,20 @@ docker compose build --pull
 docker compose up -d
 ```
 
-The health check runs `/app/tasks healthcheck --ca /certs/fullchain.pem --connect-address 127.0.0.1:8787`.
-Its default URL is `https://$DAYMARK_HOST:8787/health`, independent of the published
-`DAYMARK_PORT`. The probe dials the container's loopback port 8787 while retaining
-`DAYMARK_HOST` for TLS SNI, certificate hostname verification, and the HTTP Host
-header. It validates TLS trust and `/health` without requiring container DNS or
-hairpin routing to the published address. It does not prove an account exists or that external DNS/firewall
-access works. Check your actual external HTTPS address from your client too.
+The image supplies `/app/tasks healthcheck --url http://127.0.0.1:8787/health`.
+It checks the container's HTTP backend independently of the published port and
+Tailscale. It does not prove HTTPS, external reachability, or account access;
+check your actual Tailscale HTTPS address from a client too.
 The root filesystem is read-only; the database volume is writable. A multi-stage Go 1.26.11 build uses `CGO_ENABLED=0`; the non-root Debian slim runtime
 contains `/app/tasks`, `/app/apps/web`, and CA certificates, not Python or the Go
 toolchain. The build context must allow `go.mod`, `go.sum`, `cmd/tasks`, Go
 server sources, and web assets, but not the database, Android artifacts, repository
 metadata, or secrets.
 
-The server deliberately rejects ordinary non-loopback HTTP, even when
-`--public-origin` is set. A separate proxy container forwarding plain HTTP over a
-Docker bridge is therefore **not** supported by this configuration. Direct TLS
-avoids weakening that guard.
+For a standalone deployment without Tailscale Serve, configure direct TLS using
+the server's `--tls-cert` / `--tls-key` flags and replace the image's HTTP health
+check with a TLS-verifying probe. Do not reuse this HTTP Compose setup as an
+Internet-facing deployment.
 
 ## Configuration checks
 

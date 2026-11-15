@@ -1,64 +1,22 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/main/schema/compose-spec.json
 services:
   tasks:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     restart: unless-stopped
     init: true
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      DAYMARK_HOST: "${DAYMARK_HOST:?Set DAYMARK_HOST to the hostname on your TLS certificate}"
-    command:
-      - serve
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8787"
-      - --db
-      - /data/daymark.sqlite3
-      - --allowed-host
-      - "${DAYMARK_HOST:?Set DAYMARK_HOST to the hostname on your TLS certificate}"
-      - --public-origin
-      - "https://${DAYMARK_HOST}:${DAYMARK_PORT:-8787}"
-      - --tls-cert
-      - /certs/fullchain.pem
-      - --tls-key
-      - /certs/privkey.pem
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: >-
+      serve --host 0.0.0.0 --port 8787 --db /data/daymark.sqlite3
+      --allowed-host "${DAYMARK_HOST:?Set DAYMARK_HOST to your Tailscale HTTPS hostname}"
+      --public-origin "https://${DAYMARK_HOST}" --allow-insecure-http
     ports:
-      - "${DAYMARK_BIND_IP:-0.0.0.0}:${DAYMARK_PORT:-8787}:8787"
-    volumes:
-      - type: volume
-        source: tasks-data
-        target: /data
-      - type: bind
-        source: "${DAYMARK_CERT_DIR:-./certs}"
-        target: /certs
-        read_only: true
-        bind:
-          create_host_path: false
-    healthcheck:
-      test:
-        - CMD
-        - /app/tasks
-        - healthcheck
-        - --ca
-        - /certs/fullchain.pem
-        - --connect-address
-        - 127.0.0.1:8787
-      interval: 30s
-      timeout: 10s
-      start_period: 10s
-      retries: 3
+      - "127.0.0.1:${DAYMARK_PORT:-8787}:8787"
+    volumes: ["tasks-data:/data"]
     logging:
       driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      options: {max-size: "10m", max-file: "3"}
 
 volumes:
-  tasks-data:
+  tasks-data: {}

@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -41,21 +40,31 @@ func TestDockerBuildsStandaloneNonRootGoRuntime(t *testing.T) {
 	}
 }
 
-func TestComposeUsesGoHealthcheckAndKeepsVolumeIdentity(t *testing.T) {
+func TestDockerImageProvidesDefaultHealthcheck(t *testing.T) {
+	dockerfile := rootFile(t, "Dockerfile")
+	for _, required := range []string{
+		"HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3",
+		`CMD ["/app/tasks", "healthcheck", "--url", "http://127.0.0.1:8787/health"]`,
+	} {
+		if !strings.Contains(dockerfile, required) {
+			t.Errorf("Dockerfile missing %q", required)
+		}
+	}
+}
+
+func TestComposeKeepsSecureDeploymentSettings(t *testing.T) {
 	config := rootFile(t, "docker-compose.yml")
 	for _, required := range []string{
-		"        - /app/tasks\n        - healthcheck\n        - --ca\n        - /certs/fullchain.pem\n        - --connect-address\n        - 127.0.0.1:8787",
-		"    read_only: true", "      - ALL", "      - no-new-privileges:true",
-		"        source: tasks-data", "        target: /data", "        target: /certs",
-		"        read_only: true", "          create_host_path: false",
-		"      - /data/daymark.sqlite3", "      - /certs/privkey.pem", "      - /certs/fullchain.pem",
-		"      DAYMARK_HOST:", "  tasks-data:",
+		"read_only: true", "ALL", "no-new-privileges:true",
+		"tasks-data:/data", "127.0.0.1:${DAYMARK_PORT:-8787}:8787",
+		"/data/daymark.sqlite3", "--allow-insecure-http", "--public-origin",
+		"${DAYMARK_HOST:?", "  tasks-data:",
 	} {
 		if !strings.Contains(config, required) {
 			t.Errorf("Compose missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"--allow-insecure-http", "python", "--insecure", "container_name:"} {
+	for _, forbidden := range []string{"--tls-cert", "--tls-key", "/certs", "DAYMARK_BIND_IP", "python", "--insecure", "container_name:"} {
 		if strings.Contains(config, forbidden) {
 			t.Errorf("Compose must not contain %q", forbidden)
 		}
@@ -79,7 +88,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	}
 	cmd := exec.Command(command[0], append(command[1:], "-f", "docker-compose.yml", "config", "--format", "json")...)
 	cmd.Dir = filepath.Join("..", "..")
-	cmd.Env = append(os.Environ(), "DAYMARK_HOST=tasks.example.test", "DAYMARK_PORT=9443", "DAYMARK_CERT_DIR=/fixture/certs")
+	cmd.Env = append(os.Environ(), "DAYMARK_HOST=tasks.example.test", "DAYMARK_PORT=9443")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Compose config: %v", err)
@@ -88,14 +97,15 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 		Services map[string]struct {
 			ReadOnly    bool `json:"read_only"`
 			Command     []string
-			Environment map[string]string
-			Healthcheck struct{ Test []string }
-			Volumes     []struct {
+			CapDrop     []string `json:"cap_drop"`
+			SecurityOpt []string `json:"security_opt"`
+			Ports       []struct {
+				HostIP    string `json:"host_ip"`
+				Published string
+				Target    int
+			}
+			Volumes []struct {
 				Type, Source, Target string
-				ReadOnly             bool `json:"read_only"`
-				Bind                 struct {
-					CreateHostPath bool `json:"create_host_path"`
-				}
 			}
 		}
 		Volumes map[string]json.RawMessage
@@ -110,27 +120,26 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	if !service.ReadOnly {
 		t.Error("root filesystem must be read-only")
 	}
-	want := []string{"CMD", "/app/tasks", "healthcheck", "--ca", "/certs/fullchain.pem", "--connect-address", "127.0.0.1:8787"}
-	if !reflect.DeepEqual(service.Healthcheck.Test, want) {
-		t.Errorf("healthcheck = %q, want %q", service.Healthcheck.Test, want)
+
+	if strings.Join(service.CapDrop, ",") != "ALL" || strings.Join(service.SecurityOpt, ",") != "no-new-privileges:true" {
+		t.Error("container hardening must be preserved")
 	}
-	if service.Environment["DAYMARK_HOST"] != "tasks.example.test" {
-		t.Error("DAYMARK_HOST not passed to healthcheck")
+	wantCommand := "serve --host 0.0.0.0 --port 8787 --db /data/daymark.sqlite3 --allowed-host tasks.example.test --public-origin https://tasks.example.test --allow-insecure-http"
+	if got := strings.Join(service.Command, " "); got != wantCommand {
+		t.Errorf("command = %q, want %q", got, wantCommand)
 	}
-	if !strings.Contains(strings.Join(service.Command, " "), "--public-origin https://tasks.example.test:9443") {
-		t.Error("public origin must honor published port")
+	if len(service.Ports) != 1 || service.Ports[0].HostIP != "127.0.0.1" || service.Ports[0].Published != "9443" || service.Ports[0].Target != 8787 {
+		t.Errorf("HTTP backend must publish only to loopback: %+v", service.Ports)
 	}
 	mounts := make(map[string]string)
 	for _, mount := range service.Volumes {
 		mounts[mount.Target] = mount.Source
-		if mount.Target == "/certs" && (!mount.ReadOnly || mount.Bind.CreateHostPath) {
-			t.Error("certificate bind must be read-only, never auto-created")
-		}
+
 		if mount.Target == "/data" && mount.Type != "volume" {
 			t.Error("database must use existing named volume")
 		}
 	}
-	if len(mounts) != 2 || mounts["/data"] != "tasks-data" || mounts["/certs"] != "/fixture/certs" {
+	if len(mounts) != 1 || mounts["/data"] != "tasks-data" {
 		t.Errorf("unexpected mounts: %v", mounts)
 	}
 	if _, ok := config.Volumes["tasks-data"]; !ok {

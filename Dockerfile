@@ -30,4 +30,6 @@ COPY apps/web/ ./apps/web/
 
 USER 10001:10001
 EXPOSE 8787
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD ["/app/tasks", "healthcheck", "--url", "http://127.0.0.1:8787/health"]
 ENTRYPOINT ["/app/tasks"]

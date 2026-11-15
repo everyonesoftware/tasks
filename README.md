@@ -42,9 +42,9 @@ Enter the password directly at the hidden terminal prompt. Do not put passwords 
 
 ### HTTPS deployment
 
-For a container deployment with persistent storage and direct HTTPS, use the root
+For a container deployment with persistent storage and Tailscale-provided HTTPS, use the root
 `docker-compose.yml` and follow **[Docker deployment](docs/docker-deployment.md)**
-for certificate setup, account provisioning, startup, and backups.
+for Tailscale Serve setup, account provisioning, startup, and backups.
 
 Use a certificate trusted by the clients, either directly:
 
