@@ -10,6 +10,7 @@ Native C#/WinUI 3 client, not a WebView. This is the first implementation slice 
 - Real authenticated task state, completion/undo, and task creation with repeat, interval, start date, category, priority, and notes.
 - Upcoming and Routines views (read-only in this slice).
 - Connection settings, test/reconnect, and local sign-out. There is deliberately no in-place account-switch form; sign out before changing accounts.
+- Settings shows the running application's file version/build, manual GitHub update checks, last-check time and expandable plain-text release notes. A newer Windows installer opens in the default browser; run the downloaded installer yourself. No background checks, automatic downloads or automatic installation.
 - Refresh on activation and every 30 seconds. Task payloads and suggestion ordering exist only in memory; disconnected/signed-out views clear them.
 - One endpoint/account/session envelope encrypted for the current Windows user using `DataProtectionProvider("LOCAL=user")`, then committed with same-directory atomic replacement. No password storage. No plaintext task cache or write queue.
 
@@ -17,7 +18,17 @@ The native client's navigation uses the existing product's Today, Upcoming, Rout
 
 ## Not included yet
 
-Task editing/archiving, full-history browsing, automatic updating, and tray/background behavior. Installer/release automation is implemented below, but its native Windows execution remains unverified until an authorized hosted run succeeds. Do not mistake the existing Android release manifest for a Windows update feed. No Windows installer has been published by these local changes.
+Task editing/archiving, full-history browsing, automatic updating, and tray/background behavior. Do not mistake the existing Android release manifest for a Windows update feed. The manual Windows checker uses the existing combined GitHub release's Windows installer assets; it does not consume the Android manifest.
+
+## Version and manual updates
+
+The current version comes from the **running app assembly**, not the server, Git history on the user's machine, or latest-release metadata. Packaged releases use `0.1.N.0` plus source-stamped informational version metadata; unversioned/non-release builds are labeled Development build and never reported as up to date based on a guessed build number.
+
+**Check for updates** anonymously requests the latest stable release from the fixed `everyonesoftware/tasks` GitHub API endpoint. It distinguishes checking, current, newer, no releases, development and failed states. Failures/rate limits do not change the Tasks session or block task access. Results stay in memory. Requests disallow redirects/cookies, use normal TLS validation, send no Tasks credentials, and bound both metadata bytes and total time (including body reads).
+
+A valid candidate must have canonical `vN` identity in `1..65534`, be non-draft/non-prerelease and include exactly one uploaded, nonempty `Tasks-Windows-N-Setup.exe` and matching `.sha256` sidecar, with exact HTTPS URLs under that same repository/release. Android-only or malformed/incomplete releases fail the check rather than being offered. Equal/older versions never offer a downgrade. Development builds can explicitly download the published release without claiming it is newer.
+
+**Download update** opens only the validated Windows asset URL in the default browser. The app does not download bytes, verify the sidecar digest, launch the installer or claim installation succeeded; browser download and manual installer execution remain user-controlled. No separate Windows manifest, backend credentials, automatic execution or Android updater reuse is involved. Native Windows browser handoff and Settings rendering remain separate acceptance gates.
 
 ## Structure
 

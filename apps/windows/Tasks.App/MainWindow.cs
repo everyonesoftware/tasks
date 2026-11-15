@@ -14,6 +14,13 @@ internal sealed class MainWindow : Window
 {
     private readonly Grid root;
     private readonly TasksClient client = new(new WindowsSessionVault());
+    private readonly WindowsUpdateClient updates = new();
+    private readonly WindowsAppVersion installedVersion = WindowsAppVersion.FromAssembly(typeof(MainWindow).Assembly);
+    private WindowsUpdateResult? updateResult;
+    private bool checkingUpdates;
+    private bool openingDownload;
+    private DateTimeOffset? lastUpdateCheck;
+    private string? updateNotice;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherQueueTimer refreshTimer;
     private bool initialized;
@@ -63,6 +70,7 @@ internal sealed class MainWindow : Window
             closed = true;
             refreshTimer.Stop();
             lifetime.Cancel();
+            updates.Dispose();
         };
         root.SizeChanged += (_, args) =>
         {
@@ -115,6 +123,76 @@ internal sealed class MainWindow : Window
         Find<Button>("RetryConnection").Click += async (_, _) => await RunAsync(ct => client.RefreshAsync(Today, ct), "Reconnected.");
         Find<Button>("SignOut").Click += async (_, _) => await SignOutAsync();
         Find<Button>("OfflineSignOut").Click += async (_, _) => await SignOutAsync();
+        Find<Button>("CheckUpdates").Click += async (_, _) => await CheckUpdatesAsync();
+        Find<Button>("DownloadUpdate").Click += async (_, _) => await DownloadUpdateAsync();
+    }
+
+    private async Task CheckUpdatesAsync()
+    {
+        if (checkingUpdates || closed) return;
+        checkingUpdates = true;
+        updateResult = null;
+        updateNotice = null;
+        RenderUpdates();
+        try
+        {
+            var result = await updates.CheckAsync(installedVersion.BuildNumber, lifetime.Token);
+            if (!closed) { updateResult = result; lastUpdateCheck = DateTimeOffset.Now; }
+        }
+        catch (OperationCanceledException) when (closed) { }
+        finally
+        {
+            checkingUpdates = false;
+            if (!closed) RenderUpdates();
+        }
+    }
+
+    private async Task DownloadUpdateAsync()
+    {
+        if (closed || checkingUpdates || openingDownload || updateResult?.DownloadUri is not { } uri) return;
+        openingDownload = true;
+        updateNotice = null;
+        RenderUpdates();
+        try
+        {
+            var opened = await Launcher.LaunchUriAsync(uri);
+            if (!closed) updateNotice = opened
+                ? "Download opened in your browser. Run the downloaded installer to complete the update."
+                : "Could not open your browser. Try Download update again.";
+        }
+        catch (Exception)
+        {
+            if (!closed) updateNotice = "Could not open your browser. Try Download update again.";
+        }
+        finally
+        {
+            openingDownload = false;
+            if (!closed) RenderUpdates();
+        }
+    }
+
+    private void RenderUpdates()
+    {
+        Find<TextBlock>("InstalledVersion").Text = installedVersion.Display;
+        Find<TextBlock>("UpdateStatus").Text = checkingUpdates ? "Checking GitHub for Windows updates…"
+            : updateNotice ?? (updateResult?.Status switch
+            {
+                WindowsUpdateStatus.Available => $"A new Windows version is available: 0.1.{updateResult.BuildNumber} (build {updateResult.BuildNumber}).",
+                WindowsUpdateStatus.Current => $"You’re up to date. Latest published Windows build: {updateResult.BuildNumber}.",
+                WindowsUpdateStatus.NoReleases => "No published releases are available yet.",
+                WindowsUpdateStatus.Development => $"Latest Windows release: build {updateResult.BuildNumber}. This development build cannot be compared automatically.",
+                WindowsUpdateStatus.Failed => "Could not check for updates. Check your connection and try again; GitHub may be temporarily unavailable or rate-limiting requests.",
+                _ => "Check GitHub for the latest Windows release."
+            });
+        Find<ProgressBar>("UpdateProgress").Visibility = Visible(checkingUpdates);
+        Find<Button>("CheckUpdates").IsEnabled = !checkingUpdates && !openingDownload && !busy && !operations.IsEditorOpen;
+        Find<Button>("CheckUpdates").Content = checkingUpdates ? "Checking…" : "Check for updates";
+        Find<Button>("DownloadUpdate").Visibility = Visible(!checkingUpdates && updateResult?.DownloadUri is not null);
+        Find<Button>("DownloadUpdate").IsEnabled = !openingDownload && !busy && !operations.IsEditorOpen;
+        Find<Button>("DownloadUpdate").Content = updateResult?.Status == WindowsUpdateStatus.Development ? "Download release" : "Download update";
+        Find<TextBlock>("LastUpdateCheck").Text = lastUpdateCheck is { } time ? $"Last checked: {time:g}" : "Not checked yet";
+        Find<TextBlock>("ReleaseNotes").Text = updateResult?.ReleaseNotes ?? string.Empty;
+        Find<Expander>("ReleaseNotesPanel").Visibility = Visible(!checkingUpdates && !string.IsNullOrWhiteSpace(updateResult?.ReleaseNotes));
     }
 
     private async Task SignInAsync()
@@ -205,6 +283,7 @@ internal sealed class MainWindow : Window
         SetControlsEnabled(Find<Grid>("Workspace"), enabled);
         SetControlsEnabled(Find<Grid>("ConnectionPanel"), enabled);
         Find<ProgressBar>("BusyProgress").Visibility = Visible(value);
+        RenderUpdates();
     }
 
     private static void SetControlsEnabled(DependencyObject parent, bool enabled)
@@ -219,6 +298,7 @@ internal sealed class MainWindow : Window
 
     private void Render()
     {
+        RenderUpdates();
         var connected = client.IsConnected && client.State is not null && !operations.IsSigningOut;
         operations.SetConnected(connected);
         Find<ScrollViewer>("SignInPanel").Visibility = Visible(client.Session is null && !client.NeedsSignOutRetry);
@@ -244,7 +324,7 @@ internal sealed class MainWindow : Window
         {
             "upcoming" => "The next scheduled occurrence of each task",
             "routines" => "All active tasks and their schedules",
-            "settings" => "Your server and account",
+            "settings" => "Your connection, account and app updates",
             _ => Today.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d")
         };
         Find<StackPanel>("TodayPanel").Visibility = Visible(page == "today");
