@@ -21,9 +21,10 @@
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
   </Grid.Resources>
-  <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+  <Border x:Name="TitleBar" Background="#202B30" Height="32" />
 
-  <ScrollViewer x:Name="SignInPanel" HorizontalScrollBarVisibility="Disabled">
+  <ScrollViewer x:Name="SignInPanel" Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Width="390" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,64" Spacing="18">
       <TextBlock Text="◴ Tasks" FontFamily="Georgia" FontSize="40" Foreground="{StaticResource Ink}" />
       <TextBlock Text="Connect to your workspace" FontSize="22" FontWeight="SemiBold" Margin="0,12,0,0" />
@@ -37,7 +38,7 @@
     </StackPanel>
   </ScrollViewer>
 
-  <Grid x:Name="ConnectionPanel" Visibility="Collapsed">
+  <Grid x:Name="ConnectionPanel" Grid.Row="1" Visibility="Collapsed">
     <StackPanel MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" Margin="28">
       <TextBlock Text="Connection required" Style="{StaticResource Heading}" />
       <TextBlock Text="Reconnect to access your tasks. No task data is stored on this device." Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
@@ -46,17 +47,17 @@
     </StackPanel>
   </Grid>
 
-  <Grid x:Name="Workspace" Visibility="Collapsed">
+  <Grid x:Name="Workspace" Grid.Row="1" Visibility="Collapsed">
     <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarWidth" Width="204" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
     <Grid Background="#192328" Padding="12,30,12,18">
       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
       <TextBlock Text="◴ Tasks" FontFamily="Georgia" FontSize="29" Margin="12,0,0,32" Foreground="{StaticResource Ink}" />
       <StackPanel Grid.Row="1" Spacing="5">
-        <Button x:Name="TodayNav" Style="{StaticResource NavButton}" Content="Today" />
-        <Button x:Name="UpcomingNav" Style="{StaticResource NavButton}" Content="Upcoming" />
-        <Button x:Name="RoutinesNav" Style="{StaticResource NavButton}" Content="Routines" />
+        <Button x:Name="TodayNav" Style="{StaticResource NavButton}" AutomationProperties.Name="Today"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE706;" FontSize="18" /><TextBlock Text="Today" VerticalAlignment="Center" /></StackPanel></Button>
+        <Button x:Name="UpcomingNav" Style="{StaticResource NavButton}" AutomationProperties.Name="Upcoming"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE787;" FontSize="18" /><TextBlock Text="Upcoming" VerticalAlignment="Center" /></StackPanel></Button>
+        <Button x:Name="RoutinesNav" Style="{StaticResource NavButton}" AutomationProperties.Name="Routines"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE8EE;" FontSize="18" /><TextBlock Text="Routines" VerticalAlignment="Center" /></StackPanel></Button>
       </StackPanel>
-      <Button x:Name="SettingsNav" Grid.Row="3" Style="{StaticResource NavButton}" Content="Settings" />
+      <Button x:Name="SettingsNav" Grid.Row="3" Style="{StaticResource NavButton}" AutomationProperties.Name="Settings"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="18" /><TextBlock Text="Settings" VerticalAlignment="Center" /></StackPanel></Button>
     </Grid>
     <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
       <StackPanel x:Name="MainContent" MaxWidth="1000" HorizontalAlignment="Left" Padding="40,32,40,32" Spacing="26">
@@ -91,7 +92,7 @@
       </StackPanel>
     </ScrollViewer>
   </Grid>
-  <StackPanel Grid.Row="1" Background="#192328" Padding="20,10" Spacing="6">
+  <StackPanel Grid.Row="2" Background="#192328" Padding="20,10" Spacing="6">
     <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" Height="3" Foreground="{StaticResource Mint}" />
     <TextBlock x:Name="Notice" AutomationProperties.LiveSetting="Polite" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" />
   </StackPanel>

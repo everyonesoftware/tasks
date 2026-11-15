@@ -1,3 +1,24 @@
+# Android adaptive launcher icon — 2026-11-15
+
+- The supplied phone screenshot showed the old square Tasks drawable normalized inside a white circular launcher plate. Replaced the manifest launcher reference with a proper API26+ adaptive mipmap, using separate full-bleed slate background and transparent mint-symbol foreground layers. Both `android:icon` and `android:roundIcon` resolve to that adaptive artwork. The app's minimum SDK is 26; package, signing, storage and update identities are unchanged.
+- The new launcher-resource regression was observed RED on the old drawable/missing round-icon declaration and GREEN after the resource/manifest change. Existing Android branding/upgrade-identity checks were updated to require the new launcher references.
+- All **37 Android unit tests** passed with zero failures/errors/skips. Debug app APK, instrumentation-test APK and debug lint passed. The build emitted the existing command-line SDK XML-version warning. Read the compiled debug APK with `aapt2`: normal/round icon attributes resolve to the same mipmap resource, whose compiled XML contains `adaptive-icon` with separate background/foreground references. `go test ./...`, `go vet ./...` and `git diff --check` passed.
+- No phone/emulator installation, device launcher screenshot, signed release, commit, push or publication was performed. Actual launcher appearance/cache refresh on Dan's phone remains to be checked after a released upgrade. The earlier Windows shell changes remain uncommitted and untouched by this Android slice.
+
+---
+
+# Windows shell polish — 2026-11-15
+
+- Removed the root-level Ctrl+N accelerator's automatic hover tooltip while retaining the keyboard command. The root-owned accelerator was causing the whole-window shortcut hint shown in the supplied screenshot.
+- Added a seven-resolution Windows ICO (16/24/32/48/64/128/256px) rendered from the existing `apps/web/icon.svg`, embedded into the executable and copied for `AppWindow.SetIcon`. Visually inspected the generated 256px icon and verified the runtime ICO appears in the compile output.
+- Matched Music's extended-content/custom-drag-area approach: a slate 32px title area, transparent native caption-button backgrounds, and readable active/inactive foregrounds. Content and status rows remain separate from the drag area. Added native sun/calendar/repeat/settings navigation symbols with visible labels and explicit accessible destination/selected names; composite button content is no longer cast to a string.
+- Each of the four source-contract regressions was observed RED before implementation and GREEN after. All **38 Windows Node tests**, **55 core C# tests**, **15 storage/UI-policy tests**, and **10 isolated real-Go-API smoke checks** passed. The actual WinUI project compiled against its real Windows references using the documented Linux library-only overrides, with zero warnings/errors. These checks do not exercise native pointer hover, runtime XAML rendering or Windows taskbar integration.
+- Windows update checking/downloading/installation remains **unimplemented**; the Android updater manifest is not a Windows feed. No updater was added or availability claimed.
+- Independent review found no actionable correctness/regression issues, reran all 38 Windows Node tests and the real-reference WinUI compile, decoded all seven ICO images and confirmed the copied runtime icon matches byte-for-byte. This is source/compile review, not native Windows acceptance.
+- **Still required:** native Windows publish/install/launch; inspect taskbar/shortcut branding, hovering without Ctrl+N hints, the retained Ctrl+N command, dark captions in active/inactive/restored/maximized/high-DPI windows, dragging/system buttons, and all navigation labels/icons/selection. This host cannot run native Windows UI, and the installed application is unchanged. No commit, push, release, installation or live-data change was performed. Earlier native/release evidence predates these source fixes.
+
+---
+
 # Windows installer and combined release automation — 2026-11-15
 
 - Added a per-user unsigned Inno Setup installer with a stable Windows AppId, Start menu shortcut and normal uninstaller. The default install directory is `%LOCALAPPDATA%\Programs\Tasks`; protected sessions remain separately under `EveryoneSoftware\Tasks` and are not deleted by uninstall. No automatic updater, startup registration, certificate purchase or new signing identity was introduced.

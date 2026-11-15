@@ -5,6 +5,7 @@ Native C#/WinUI 3 client, not a WebView. This is the first implementation slice 
 ## Included
 
 - Slate/mint Windows workspace, left navigation, Current task, daily progress, queue selection, Not now, and bottom-right Mark done.
+- App-colored draggable title area with native caption controls, embedded/runtime Tasks icon, and labeled navigation icons. Ctrl+N opens Add task without a whole-window shortcut tooltip. These shell changes still require native Windows rendering/hover/taskbar acceptance.
 - Configurable server origin and existing-account sign-in. First-user provisioning remains the server's web welcome flow.
 - Real authenticated task state, completion/undo, and task creation with repeat, interval, start date, category, priority, and notes.
 - Upcoming and Routines views (read-only in this slice).

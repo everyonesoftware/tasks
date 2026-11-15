@@ -25,12 +25,19 @@ internal sealed class MainWindow : Window
     public MainWindow()
     {
         Title = "Tasks";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Tasks.ico"));
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 900));
         using var stream = typeof(MainWindow).Assembly.GetManifestResourceStream("Tasks.App.Shell.xaml")
             ?? throw new InvalidOperationException("Missing native shell resource.");
         using var reader = new StreamReader(stream);
         root = (Grid)XamlReader.Load(reader.ReadToEnd());
         Content = root;
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(Find<Border>("TitleBar"));
+        AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        AppWindow.TitleBar.ButtonForegroundColor = Color.FromArgb(255, 237, 242, 237);
+        AppWindow.TitleBar.ButtonInactiveForegroundColor = Color.FromArgb(255, 178, 192, 192);
         operations.Changed += () => { if (!closed) SetBusy(busy); };
         WireControls();
         refreshTimer = DispatcherQueue.CreateTimer();
@@ -70,6 +77,7 @@ internal sealed class MainWindow : Window
             args.Handled = true;
             if (client.IsConnected) await AddAsync();
         };
+        root.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
         root.KeyboardAccelerators.Add(addShortcut);
         Render();
     }
@@ -243,12 +251,12 @@ internal sealed class MainWindow : Window
         Find<StackPanel>("ListPanel").Visibility = Visible(page is "upcoming" or "routines");
         Find<StackPanel>("SettingsPanel").Visibility = Visible(page == "settings");
         Find<Button>("AddTask").Visibility = Visible(page != "settings");
-        foreach (var (name, route) in new[] { ("TodayNav", "today"), ("UpcomingNav", "upcoming"), ("RoutinesNav", "routines"), ("SettingsNav", "settings") })
+        foreach (var (name, route, label) in new[] { ("TodayNav", "today", "Today"), ("UpcomingNav", "upcoming", "Upcoming"), ("RoutinesNav", "routines", "Routines"), ("SettingsNav", "settings", "Settings") })
         {
             var nav = Find<Button>(name);
             nav.Background = route == page ? Brush(52, 75, 65) : new SolidColorBrush(Colors.Transparent);
             nav.Foreground = route == page ? Brush(190, 223, 199) : Brush(178, 192, 192);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nav, (string)nav.Content + (route == page ? ", selected" : string.Empty));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nav, label + (route == page ? ", selected" : string.Empty));
         }
         Find<TextBlock>("ProgressText").Text = $"{state.Progress.Completed} of {state.Progress.Total} completed";
         Find<ProgressBar>("DailyProgress").Maximum = Math.Max(1, state.Progress.Total);

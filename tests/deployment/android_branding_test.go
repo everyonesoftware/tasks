@@ -12,7 +12,7 @@ import (
 func TestAndroidTasksBrandingPreservesUpgradeIdentity(t *testing.T) {
 	for path, required := range map[string][]string{
 		"apps/android/settings.gradle.kts":                                               {`rootProject.name = "Tasks"`},
-		"apps/android/app/src/main/AndroidManifest.xml":                                  {`android:label="Tasks"`, `android:icon="@drawable/ic_tasks"`},
+		"apps/android/app/src/main/AndroidManifest.xml":                                  {`android:label="Tasks"`, `android:icon="@mipmap/ic_tasks"`, `android:roundIcon="@mipmap/ic_tasks"`},
 		"apps/android/app/build.gradle.kts":                                              {`namespace = "com.everyonesoftware.daymark"`, `applicationId = "com.everyonesoftware.daymark"`, `"DAYMARK_KEYSTORE_PATH"`, `"DAYMARK_KEYSTORE_PASSWORD"`, `"DAYMARK_KEY_ALIAS"`, `"DAYMARK_KEY_PASSWORD"`},
 		"apps/android/app/src/main/java/com/everyonesoftware/daymark/AndroidSecurity.kt": {`getSharedPreferences("daymark",Context.MODE_PRIVATE)`, `"daymark-session-v2"`},
 		"apps/android/app/src/main/java/com/everyonesoftware/daymark/SettingsScreen.kt":  {`fun TasksApp(`, `Text("Tasks",`},
