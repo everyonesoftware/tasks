@@ -2,6 +2,18 @@
 
 Dependency-free HTML/CSS/native ES modules. Serve `apps/web` at `/` alongside the authenticated same-origin `/api`. Open the backend origin, not `file:` or a separate production static host. Provision an account with the server administrator CLI; no demo accounts/tasks are created.
 
+## Run with the Go server
+
+From the repository root (Go 1.26.11+):
+
+```sh
+CGO_ENABLED=0 go build -o bin/daymark ./cmd/daymark
+./bin/daymark create-user --db .data/daymark.sqlite3 --username dan
+./bin/daymark serve --host 127.0.0.1 --port 8787 --db .data/daymark.sqlite3 --web-root apps/web
+```
+
+Enter passwords only at the hidden prompt. Open `http://127.0.0.1:8787/` for loopback development; production requires HTTPS. `go run ./cmd/daymark` accepts the same commands. Docker bundles the compiled server and these assets; see `docs/docker-deployment.md`.
+
 ## Connection and data safety
 
 - Startup checks `/api/auth/session` before loading tasks. First login asks for username/password and shows the current origin read-only. Connection Settings reviews account/origin, tests the session, reauthenticates before saving changes, confirms different-user switches, and signs out.

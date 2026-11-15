@@ -5,13 +5,14 @@ One cohesive product: web, native Android, and a private single-user server. No 
 ## Ownership
 - `apps/web`: responsive HTML/CSS/JS client; relative same-origin `/api` calls.
 - `apps/android`: Kotlin/Compose client; configurable server base URL.
-- `services/server`: Python standard-library HTTP API, recurrence engine, SQLite.
+- `cmd/daymark`: Go CLI; `services/server`: Go HTTP API, recurrence engine, and pure-Go SQLite (`modernc.org/sqlite`).
 - `contracts/auth-and-updates.md`: authoritative authentication, server-only-data, connection and Android updater requirements. It supersedes old no-auth/cache assumptions in `contracts/api.md`; task JSON shapes stay compatible.
 - `mockups`: historical design artifacts, not production source.
 
 ## Checks
 - Write a failing behavior test before each production behavior slice, verify RED, implement, verify GREEN.
-- Backend: `python3 -m unittest discover -s tests/server -v`.
+- Backend/deployment: `go test ./...` and `go vet ./...` (Go 1.26.11+). Build: `CGO_ENABLED=0 go build -o bin/daymark ./cmd/daymark`. Deployment tests: `go test ./tests/deployment -v`; validate Docker build/Compose when installed, without deploying live data.
+- Keep the independent Python release packaging helper/tests: `python3 -m unittest discover -s tests/release -v`.
 - Web helpers: Node built-in tests in `tests/web` plus browser tests against a real isolated API/database.
 - Android: source `/opt/data/tools/android-env.sh`, then from `apps/android` run `bash gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --console=plain --max-workers=2`.
 - Do not run concurrent Gradle builds in this checkout. Do not install or clear data on a personal device or another project's emulator. The Daymark validation AVD uses emulator-5584; emulator-5582 belongs to another task.

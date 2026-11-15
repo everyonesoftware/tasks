@@ -2,10 +2,12 @@
 
 This supersedes the unauthenticated/offline-cache assumptions in `api.md`. Existing task/occurrence JSON shapes and recurrence rules stay unchanged. All task data/history remains on the server; clients may hold it in memory only while authenticated and connected. No persistent task payloads or task-order caches on devices. On connection loss/sign-out/account switch clear task state, disable access/writes, and remove legacy task caches.
 
+The server is Go 1.26.11+ with pure-Go SQLite. Build from the repository root with `CGO_ENABLED=0 go build -o bin/daymark ./cmd/daymark`; `go run ./cmd/daymark` accepts the same CLI commands.
+
 ## Authentication
 
 - Server-admin CLI provisions users; no open self-registration and no seeded account/password.
-- `python3 -m services.server create-user --db PATH --username NAME` prompts with `getpass`; `--password-stdin` is available for automation/tests. Never log passwords or session tokens. A CLI password-reset option revokes that user's sessions. If legacy unowned tasks exist, do not assign them silently; provide explicit CLI adoption to an existing username.
+- `./bin/daymark create-user --db PATH --username NAME` prompts at a hidden terminal prompt; `--password-stdin` is available for automation/tests. Never log passwords or session tokens. A CLI password-reset option revokes that user's sessions. If legacy unowned tasks exist, do not assign them silently; provide explicit CLI adoption to an existing username.
 - Username: 1..64 ASCII letters/digits/dot/underscore/hyphen, case-insensitive identity. Password: 8..1024 characters for provisioning; passwords are never trimmed. Store salted PBKDF2-HMAC-SHA256 (>=600,000 iterations) or equivalently appropriate password hashes, never plaintext.
 - `POST /api/auth/login` body `{ "username":"...", "password":"..." }` -> 200 `{ "token":"opaque random secret", "username":"canonical name", "expiresAt":"UTC ISO timestamp" }`. Also set HttpOnly, SameSite=Strict `daymark_session` cookie, Secure under HTTPS. Generic 401 for wrong credentials; rate limit repeated failures with 429 + Retry-After. Do not send credentials to redirects.
 - `GET /api/auth/session` -> 200 `{ "username":"...", "expiresAt":"..." }` or 401. It never returns password/token.
@@ -13,7 +15,7 @@ This supersedes the unauthenticated/offline-cache assumptions in `api.md`. Exist
 - Sessions: cryptographically random >=32 bytes, only token hash stored in SQLite, expiry enforced, logout revokes. Default lifetime 30 days. Send `Authorization: Bearer TOKEN` from Android. Web uses only the HttpOnly cookie, never localStorage tokens/passwords.
 - Every `/api/state`, task/occurrence route, and export requires a session. Each task is owned by its user. Reads, edits, completion, undo, archive and export are owner-scoped; another user's IDs must look not-found. Do not export user/password/session tables.
 - Keep Host, Origin, static-path, JSON and size protections. No permissive CORS. Browser Origin/Referer validation supports actual HTTPS and an explicit configured public reverse-proxy origin; do not blindly trust arbitrary forwarded headers.
-- Production credential transport must be HTTPS. Server CLI supports `--tls-cert PATH --tls-key PATH` (ssl standard library) and optionally `--public-origin https://HOST[:PORT]` for a separately configured trusted TLS reverse proxy. Default HTTP login is allowed only on loopback for development. `--allow-insecure-http` explicitly enables the existing trusted encrypted-tailnet development setup; document that this is NOT a public/plain-Internet deployment. Never disable certificate validation in clients.
+- Production credential transport must be HTTPS. Server CLI supports `--tls-cert PATH --tls-key PATH` (Go `crypto/tls`) and optionally `--public-origin https://HOST[:PORT]` for a separately configured trusted TLS reverse proxy. Default HTTP login is allowed only on loopback for development. `--allow-insecure-http` explicitly enables the existing trusted encrypted-tailnet development setup; document that this is NOT a public/plain-Internet deployment. Never disable certificate validation in clients.
 
 ## Android connection flow
 

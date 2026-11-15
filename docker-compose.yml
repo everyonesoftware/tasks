@@ -44,18 +44,12 @@ services:
     healthcheck:
       test:
         - CMD
-        - python
-        - -c
-        - |
-          import http.client, json, os, socket, ssl
-          context = ssl.create_default_context(cafile='/certs/fullchain.pem')
-          with socket.create_connection(('127.0.0.1', 8787), timeout=5) as tcp:
-              with context.wrap_socket(tcp, server_hostname=os.environ['DAYMARK_HOST']) as tls:
-                  tls.sendall(b'GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
-                  response = http.client.HTTPResponse(tls)
-                  response.begin()
-                  assert response.status == 200, response.status
-                  assert json.loads(response.read(65536))['status'] == 'ok'
+        - /app/daymark
+        - healthcheck
+        - --ca
+        - /certs/fullchain.pem
+        - --connect-address
+        - 127.0.0.1:8787
       interval: 30s
       timeout: 10s
       start_period: 10s

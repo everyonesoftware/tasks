@@ -1,8 +1,13 @@
 **
 !Dockerfile
+!go.mod
+!go.sum
+!cmd/
+!cmd/daymark/
+!cmd/daymark/*.go
 !services/
 !services/server/
-!services/server/*.py
+!services/server/*.go
 !apps/
 !apps/web/
 !apps/web/**

@@ -18,3 +18,4 @@ apps/android/local.properties
 certs/
 *.log
 dist/
+bin/

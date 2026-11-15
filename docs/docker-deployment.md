@@ -1,6 +1,6 @@
 # Deploy Tasks (Daymark) with Docker Compose
 
-Run commands from the repository root. This setup builds both the Python API and
+Run commands from the repository root. This setup builds the Go API binary and
 web client into one image and serves them over **direct HTTPS** on port 8787.
 Android connects to the same HTTPS origin. It does not include Android builds or
 publish an image/release.
@@ -71,6 +71,8 @@ docker compose run --rm --no-deps tasks reset-password --db /data/daymark.sqlite
 
 ## Persistence, backups, and updates
 
+The named `tasks-data` volume and `/data/daymark.sqlite3` path are unchanged from the Python deployment. Before replacing an existing server, stop writes and take a full SQLite backup; do not run old and new servers concurrently against one database. Test migrations against a disposable backup first. No tasks are seeded and legacy ownership is never silently adopted.
+
 The named `tasks-data` volume stores `/data/daymark.sqlite3`, including accounts,
 sessions, tasks and history. **This is a new database, not an automatic migration
 of a host `.data/daymark.sqlite3`.** An existing database needs a deliberate backup
@@ -89,12 +91,18 @@ docker compose build --pull
 docker compose up -d
 ```
 
-The health check verifies HTTPS (including the configured certificate hostname)
-and `/health`. It does not prove an account exists or that external DNS/firewall
+The health check runs `/app/daymark healthcheck --ca /certs/fullchain.pem --connect-address 127.0.0.1:8787`.
+Its default URL is `https://$DAYMARK_HOST:8787/health`, independent of the published
+`DAYMARK_PORT`. The probe dials the container's loopback port 8787 while retaining
+`DAYMARK_HOST` for TLS SNI, certificate hostname verification, and the HTTP Host
+header. It validates TLS trust and `/health` without requiring container DNS or
+hairpin routing to the published address. It does not prove an account exists or that external DNS/firewall
 access works. Check your actual external HTTPS address from your client too.
-The root filesystem is read-only; the database volume is writable. Only
-`services/server` Python modules and web assets are allowed into the build
-context, not the database, Android artifacts, repository metadata, or secrets.
+The root filesystem is read-only; the database volume is writable. A multi-stage Go 1.26.11 build uses `CGO_ENABLED=0`; the non-root Debian slim runtime
+contains `/app/daymark`, `/app/apps/web`, and CA certificates, not Python or the Go
+toolchain. The build context must allow `go.mod`, `go.sum`, `cmd/daymark`, Go
+server sources, and web assets, but not the database, Android artifacts, repository
+metadata, or secrets.
 
 The server deliberately rejects ordinary non-loopback HTTP, even when
 `--public-origin` is set. A separate proxy container forwarding plain HTTP over a
@@ -104,9 +112,13 @@ avoids weakening that guard.
 ## Configuration checks
 
 ```sh
-python3 -m unittest discover -s tests/deployment -v
-python3 -m unittest discover -s tests/server -v
+go test ./tests/deployment -v
+go test ./...
+go vet ./...
+docker compose config --quiet
+docker build -t daymark:local .
 ```
 
-The deployment test uses `docker compose config` and does not require a running
+The Go deployment tests check image/configuration invariants. When Compose is
+installed, the rendered configuration test uses `docker compose config` and does not require a running
 Docker daemon. Set `COMPOSE_BINARY` to use a standalone Compose v2 executable.
