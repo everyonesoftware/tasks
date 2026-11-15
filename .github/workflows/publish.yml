@@ -94,6 +94,8 @@ jobs:
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: write
     env:
       DAYMARK_VERSION: ${{ needs.validate.outputs.version }}
     steps:
@@ -145,6 +147,20 @@ jobs:
           mkdir -p dist/android
           cp "$apk" "dist/android/Tasks-$DAYMARK_VERSION.apk"
           sha256sum "dist/android/Tasks-$DAYMARK_VERSION.apk" > dist/android/SHA256SUMS
+          sdk_pattern="^(minSdkVersion|sdkVersion):'([0-9]+)'$"
+          min_sdk=
+          while IFS= read -r line; do
+            if [[ "$line" =~ $sdk_pattern ]]; then
+              min_sdk=${BASH_REMATCH[2]}
+              break
+            fi
+          done <<< "$badging"
+          [[ "$min_sdk" =~ ^[1-9][0-9]*$ && "$min_sdk" -le 1000 ]]
+          checksum=$(sha256sum "dist/android/Tasks-$DAYMARK_VERSION.apk")
+          checksum=${checksum%% *}
+          printf '{"schemaVersion":1,"packageName":"com.everyonesoftware.daymark","versionName":"%s","versionCode":%s,"minSdk":%s,"apkAssetName":"Tasks-%s.apk","sha256":"%s"}\n' \
+            "$DAYMARK_VERSION" "$DAYMARK_VERSION" "$min_sdk" "$DAYMARK_VERSION" "$checksum" \
+            > dist/android/daymark-release.json
           echo "Signed Android version/build: $DAYMARK_VERSION ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload signed Android APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -153,6 +169,51 @@ jobs:
           path: dist/android/
           if-no-files-found: error
           retention-days: 30
+      - name: Publish Android GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v$DAYMARK_VERSION"
+          verify_tag() {
+            local allow_missing=$1 remote sha ref tag_sha= peeled_sha=
+            remote=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}") || return 1
+            if [[ -z "$remote" && "$allow_missing" == true ]]; then
+              return 0
+            fi
+            while read -r sha ref; do
+              case "$ref" in
+                "refs/tags/$tag") tag_sha=$sha ;;
+                "refs/tags/$tag^{}") peeled_sha=$sha ;;
+              esac
+            done <<< "$remote"
+            sha=${peeled_sha:-$tag_sha}
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ || "$sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::Release tag $tag must resolve to build commit $GITHUB_SHA (found ${sha:-missing})."
+              return 1
+            fi
+          }
+          remote=$(git ls-remote --exit-code origin refs/heads/main)
+          read -r main_sha _ <<< "$remote"
+          [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]
+          latest=false
+          if [[ "$GITHUB_SHA" == "$main_sha" ]]; then
+            latest=true
+          fi
+          verify_tag true
+          gh release create "$tag" \
+            "dist/android/Tasks-$DAYMARK_VERSION.apk" \
+            dist/android/daymark-release.json dist/android/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Tasks $DAYMARK_VERSION" --generate-notes \
+            --draft=false --prerelease=false --latest="$latest"
+          verify_tag false
+          assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,assets \
+            --jq 'select(.isDraft == false and .isPrerelease == false) | .assets[] | select(.state == "uploaded") | .name')
+          for asset in "Tasks-$DAYMARK_VERSION.apk" daymark-release.json SHA256SUMS; do
+            grep -Fxq "$asset" <<< "$assets"
+          done
+          echo "Published $tag: signed Android version/build $DAYMARK_VERSION ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/daymark-release.p12"

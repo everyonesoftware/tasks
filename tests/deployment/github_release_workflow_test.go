@@ -1,0 +1,166 @@
+package deployment
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// runAndroidReleaseWorkflow executes the real workflow shell with local-only Git/GH boundaries.
+// A successful fake create switches subsequent tag lookups to the post-create state.
+func runAndroidReleaseWorkflow(t *testing.T, run, remote, failure, before, after string) (string, error, string, string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"git": `#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$GIT_CALLS"
+case "$*" in
+  'ls-remote --exit-code origin refs/heads/main')
+    [[ -n $REMOTE ]] || exit 1
+    printf '%s\trefs/heads/main\n' "$REMOTE"
+    ;;
+  'ls-remote origin refs/tags/v137 refs/tags/v137^{}')
+    if [[ -f $CREATED ]]; then
+      [[ $FAILURE != tag-after ]] || exit 1
+      printf '%s' "$TAG_AFTER"
+    else
+      [[ $FAILURE != tag-before ]] || exit 1
+      printf '%s' "$TAG_BEFORE"
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+`,
+		"gh": `#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$CALLS"
+[[ $2 != "$FAILURE" ]] || exit 1
+case "$1 $2" in
+  'release create') touch "$CREATED" ;;
+  'release view')
+    printf 'Tasks-137.apk\nSHA256SUMS\n'
+    [[ $FAILURE == missing ]] || echo daymark-release.json
+    ;;
+  *) exit 2 ;;
+esac
+exit 0
+`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls, gitCalls, summary := filepath.Join(dir, "calls"), filepath.Join(dir, "git-calls"), filepath.Join(dir, "summary")
+	cmd := exec.Command("bash", "-euo", "pipefail", "-c", run)
+	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "REMOTE="+remote, "FAILURE="+failure, "CALLS="+calls, "GIT_CALLS="+gitCalls, "CREATED="+filepath.Join(dir, "created"), "TAG_BEFORE="+before, "TAG_AFTER="+after, "DAYMARK_VERSION=137", "GITHUB_SHA="+strings.Repeat("a", 40), "GITHUB_REPOSITORY=fixture/tasks", "GITHUB_STEP_SUMMARY="+summary)
+	output, err := cmd.CombinedOutput()
+	read := func(path string) string {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil && !os.IsNotExist(readErr) {
+			t.Fatal(readErr)
+		}
+		return string(data)
+	}
+	return string(output), err, read(calls), read(gitCalls), read(summary)
+}
+
+func TestAndroidWorkflowReleaseTagIdentity(t *testing.T) {
+	sha, other, object := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
+	lightweight := sha + "\trefs/tags/v137\n"
+	wrong := other + "\trefs/tags/v137\n"
+	annotated := object + "\trefs/tags/v137\n" + sha + "\trefs/tags/v137^{}\n"
+	// The tag object's SHA matches the build, but its peeled commit does not.
+	wrongAnnotated := lightweight + other + "\trefs/tags/v137^{}\n"
+	run := workflowRun(t, "Publish Android GitHub release")
+	for _, tc := range []struct {
+		name, before, after, failure string
+		wantError, wantCreate        bool
+	}{
+		{"mismatched lightweight tag", wrong, lightweight, "", true, false},
+		{"mismatched annotated tag", wrongAnnotated, lightweight, "", true, false},
+		{"matching annotated tag", annotated, annotated, "", false, true},
+		{"matching lightweight tag", lightweight, lightweight, "", false, true},
+		{"missing tag before creation", "", lightweight, "", false, true},
+		{"missing post-create tag", "", "", "", true, true},
+		{"wrong post-create tag", "", wrong, "", true, true},
+		{"wrong post-create annotated tag", "", wrongAnnotated, "", true, true},
+		{"tag lookup failure before creation", lightweight, lightweight, "tag-before", true, false},
+		{"tag lookup failure after creation", "", lightweight, "tag-after", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err, calls, gitCalls, summary := runAndroidReleaseWorkflow(t, run, sha, tc.failure, tc.before, tc.after)
+			if (err != nil) != tc.wantError {
+				t.Errorf("publish error = %v, want error %v: %s", err, tc.wantError, output)
+			}
+			if created := strings.Contains(calls, "release create v137"); created != tc.wantCreate {
+				t.Errorf("release created = %v, want %v: %s", created, tc.wantCreate, calls)
+			}
+			if tc.wantError && strings.Contains(summary, "Published") {
+				t.Errorf("must not claim publication after tag verification failure: %s", summary)
+			}
+			wantLookups := 1
+			if tc.wantCreate {
+				wantLookups = 2
+			}
+			if got := strings.Count(gitCalls, "ls-remote origin refs/tags/v137 refs/tags/v137^{}\n"); got != wantLookups {
+				t.Errorf("tag lookups = %d, want %d: %s", got, wantLookups, gitCalls)
+			}
+		})
+	}
+}
+
+func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
+	workflow := rootFile(t, ".github/workflows/publish.yml")
+	_, android, ok := strings.Cut(workflow, "  android:\n")
+	if !ok || !strings.Contains(android, "    permissions:\n      contents: write\n") {
+		t.Fatal("Android publisher needs job-scoped contents: write")
+	}
+	if strings.Contains(strings.Split(workflow, "jobs:")[0], "contents: write") {
+		t.Fatal("release permission must not be workflow-wide")
+	}
+	if !strings.Contains(android, "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}") {
+		t.Fatal("release step must authenticate with the workflow token")
+	}
+	if strings.Index(android, "- name: Publish Android GitHub release") < strings.Index(android, "- name: Upload signed Android APK") {
+		t.Fatal("release must follow successful verification and artifact upload")
+	}
+	run := workflowRun(t, "Publish Android GitHub release")
+	for _, tc := range []struct {
+		name, remote, failure, wantLatest string
+		wantError                         bool
+	}{
+		{"current main", strings.Repeat("a", 40), "", "true", false},
+		{"old rerun", strings.Repeat("b", 40), "", "false", false},
+		{"remote unavailable", "", "", "", true},
+		{"create fails or release exists", strings.Repeat("a", 40), "create", "true", true},
+		{"readback fails", strings.Repeat("a", 40), "view", "true", true},
+		{"missing asset", strings.Repeat("a", 40), "missing", "true", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err, log, _, _ := runAndroidReleaseWorkflow(t, run, tc.remote, tc.failure, "", strings.Repeat("a", 40)+"	refs/tags/v137\n")
+			if (err != nil) != tc.wantError {
+				t.Fatalf("publish error = %v, want error %v: %s", err, tc.wantError, output)
+			}
+			if tc.remote == "" {
+				if log != "" {
+					t.Fatalf("remote failure must prevent publishing: %s", log)
+				}
+				return
+			}
+			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json"} {
+				if !strings.Contains(log, required) {
+					t.Errorf("release command missing %q: %s", required, log)
+				}
+			}
+			if tc.failure == "create" && strings.Contains(log, "release view") {
+				t.Fatal("must not claim success after creation failure")
+			}
+			if !tc.wantError && !strings.Contains(log, "release view v137") {
+				t.Fatal("must read back the exact published release")
+			}
+		})
+	}
+}

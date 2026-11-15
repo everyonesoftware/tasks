@@ -1,3 +1,13 @@
+# Automatic Android release workflow — 2026-11-15
+
+- Added stable `vN` GitHub Releases after successful Android testing, signing, APK verification and artifact upload, with the exact APK, checksum and matching updater manifest. Only the Android job receives repository-content write permission. Older runs cannot promote themselves over current `main`; existing releases are not overwritten.
+- New Go regressions were verified RED/GREEN. Tests execute the actual staging/publication shell with isolated SDK/GitHub boundaries, covering both SDK badging spellings, manifest identity/version/digest, current-head/old-run latest selection, remote failure, release creation failure, read-back failure and missing assets. Independent review caught the pre-existing-tag-only case where GitHub ignores `--target`; the correction resolves lightweight/annotated remote tags before creation and requires the expected tag commit afterward. Additional RED/GREEN regressions cover mismatched tags, matching annotated tags, absent/wrong post-create tags and lookup failures. Final race/vet/actionlint checks passed after the correction.
+- `go test ./...`, `go test -race ./...`, `go vet ./...`, deployment tests, all five existing standalone release-packaging tests, actionlint v1.7.7 and `git diff --check` passed. The rendered Compose test skipped because the Docker Compose plugin is unavailable.
+- Exercised the actual workflow staging shell against the existing signed release APK: signature verification passed; manifest recorded package `com.everyonesoftware.daymark`, versionName/versionCode `2`, minimum SDK `26`, asset `Tasks-2.apk`, and SHA256 `4b2bcbb5092c039588ac8ddfa67360ad3ef6cd82d5600947f86b17b3c2efa34a`. Copied APK bytes and digest matched independently. Evidence: `/opt/data/cache/scratch/tasks-release-staging-HoaGX9/`. This reused an earlier APK; no new Android build was performed. Initial inspection lacked Java on PATH; sourcing the documented Android environment resolved it.
+- No commit, push, workflow dispatch, release publication, signing-key access, installation or live-data change was performed. Remote GitHub release creation and in-app discovery of that future release remain unverified until an authorized push/run. A fresh release-list read returned no releases.
+
+---
+
 # Authorized Android signing setup — 2026-11-15
 
 - Reused the pre-existing production key; no key rotation or new signing identity. Verified alias `daymark` is a private-key entry, protected directory/file modes are 0700/0600, and its certificate is valid through 2054-04-01.

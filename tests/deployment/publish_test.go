@@ -22,7 +22,7 @@ func TestPublishWorkflowUsesOneCommitCountForBothDeliverables(t *testing.T) {
 			t.Errorf("workflow missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"pull_request_target:", "gh release create", "signing/daymark-release.p12", "run_number", "run: echo ${{ secrets."} {
+	for _, forbidden := range []string{"pull_request_target:", "signing/daymark-release.p12", "run_number", "run: echo ${{ secrets."} {
 		if strings.Contains(workflow, forbidden) {
 			t.Errorf("unsafe/incorrect workflow contains %q", forbidden)
 		}
