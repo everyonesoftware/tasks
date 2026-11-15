@@ -23,6 +23,15 @@ test('Tasks embeds and deploys a multi-resolution icon and assigns it to the run
   for (const size of [16, 24, 32, 48, 256]) assert.ok(sizes.includes(size), `Missing ${size}px icon`);
 });
 
+test('native icon has one Content entry after removing SDK and WinUI defaults', () => {
+  const project = read('Tasks.App/Tasks.App.csproj');
+  const include = project.indexOf('<Content Include="Assets/Tasks.ico"');
+  for (const kind of ['Content', 'None']) {
+    const remove = project.indexOf(`<${kind} Remove="Assets/Tasks.ico"`);
+    assert.ok(remove >= 0 && remove < include, `Remove default ${kind} icon entries before adding the copied asset`);
+  }
+});
+
 test('window uses an app-colored draggable title area instead of the classic frame', () => {
   const code = read('Tasks.App/MainWindow.cs');
   const xaml = read('Tasks.App/Shell.xaml');

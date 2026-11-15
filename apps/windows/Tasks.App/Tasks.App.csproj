@@ -28,6 +28,9 @@
     <ProjectReference Include="../Tasks.Core/Tasks.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260803003" />
     <EmbeddedResource Include="Shell.xaml" LogicalName="Tasks.App.Shell.xaml" />
+    <!-- WinUI includes images as Content; replace defaults before indexing the PRI. -->
+    <Content Remove="Assets/Tasks.ico" />
+    <None Remove="Assets/Tasks.ico" />
     <Content Include="Assets/Tasks.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="PublishMergedWinUIResources" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT'">

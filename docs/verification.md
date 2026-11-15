@@ -1,3 +1,11 @@
+# Windows native icon resource collision follow-up — 2026-11-15
+
+- Authorized commit `1bf7195` was pushed to `main` as build 14. Exact-SHA workflow `43747737385` completed: validation, Android signed APK, container publication and Services notification succeeded; Windows publication failed with native PRI175/PRI277 duplicate `Files/Assets/Tasks.ico`. The combined GitHub release was skipped. This was a real Windows packaging regression missed by the earlier Linux compile/source checks.
+- Evaluating the actual project with `dotnet msbuild -getItem:Content,None` reproduced two icon Content entries: the WinUI props' automatic image item and the project's explicit copied item, plus a default SDK None item. Removed those default icon entries before the explicit Content declaration, retaining executable branding and both copy metadata fields. Music uses the same remove/re-add pattern. A new focused regression was observed RED then GREEN.
+- All 39 Windows Node tests passed, and actual MSBuild item readback now proves exactly one icon Content item, zero icon None items, and both copy-to-output/publish flags. Real-reference Linux WinUI compilation passed with zero warnings/errors; native publish and installer lifecycle must pass on the follow-up hosted run before claiming release success.
+
+---
+
 # Android adaptive launcher icon — 2026-11-15
 
 - The supplied phone screenshot showed the old square Tasks drawable normalized inside a white circular launcher plate. Replaced the manifest launcher reference with a proper API26+ adaptive mipmap, using separate full-bleed slate background and transparent mint-symbol foreground layers. Both `android:icon` and `android:roundIcon` resolve to that adaptive artwork. The app's minimum SDK is 26; package, signing, storage and update identities are unchanged.
