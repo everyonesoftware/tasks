@@ -19,3 +19,14 @@ test('real application shell exposes labelled native task and archive dialogs wi
   assert.match(html, /type="module" src="\/app.mjs"/);
   assert.doesNotMatch(html, /https?:\/\//);
 });
+test('first paint hides the inactive task shell and uses a responsive slate welcome surface',async()=>{
+  const html=await readFile(new URL('index.html',root),'utf8');
+  const css=await readFile(new URL('styles.css',root),'utf8');
+  assert.match(html,/<body class="welcome-screen">/);
+  assert.match(html,/Checking this server/);
+  assert.match(html,/<header class="app-top" hidden>/);
+  assert.match(css,/\.welcome-screen \.sidebar\s*\{[^}]*display:none/);
+  assert.match(css,/\.welcome-screen \.app-top\s*\{[^}]*display:none/);
+  assert.match(css,/\.welcome-layout\s*\{[^}]*grid-template-columns/);
+  assert.match(css,/@media\s*\(max-width:760px\)[\s\S]*\.welcome-layout\s*\{[^}]*grid-template-columns:1fr/);
+});

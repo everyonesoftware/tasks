@@ -10,15 +10,15 @@
 <link rel="stylesheet" href="/styles.css">
 <script type="module" src="/app.mjs"></script>
 </head>
-<body>
-<a class="skip-link" href="#content">Skip to tasks</a>
+<body class="welcome-screen">
+<a class="skip-link" href="#content">Skip to content</a>
 <div class="shell">
 <aside class="sidebar"><a class="brand" href="/" aria-label="Tasks home"><span class="brand-mark" aria-hidden="true">◴</span>Tasks</a><nav aria-label="Main navigation" id="navigation"></nav></aside>
 <main class="workspace" id="content" tabindex="-1">
-<header class="app-top"><span class="eyebrow">Your personal space</span><button id="add-task" class="add-task" disabled><span aria-hidden="true">+</span> Add task</button></header>
-<div id="connection" role="status" class="connection">Connecting to Tasks…</div>
+<header class="app-top" hidden><span class="eyebrow">Your personal space</span><button id="add-task" class="add-task" disabled><span aria-hidden="true">+</span> Add task</button></header>
+<div id="connection" role="status" class="connection" hidden></div>
 <div id="notice" role="status" class="notice" hidden></div>
-<section id="view" aria-busy="true"><h1>One thing at a time.</h1><p class="muted">Loading your tasks…</p></section>
+<section id="view" aria-busy="true"><header class="welcome-header"><a class="brand" href="/" aria-label="Tasks home"><span class="brand-mark" aria-hidden="true">◴</span>Tasks</a><span class="muted">This server</span></header><section class="welcome-status"><h1>Welcome to Tasks.</h1><p class="muted" role="status">Checking this server…</p></section></section>
 </main>
 </div>
 <dialog id="task-dialog" aria-labelledby="task-dialog-title">

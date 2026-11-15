@@ -1,6 +1,6 @@
 # Tasks web
 
-Dependency-free HTML/CSS/native ES modules. Serve `apps/web` at `/` alongside the authenticated same-origin `/api`. Open the backend origin, not `file:` or a separate production static host. Provision an account with the server administrator CLI; no demo accounts/tasks are created.
+Dependency-free HTML/CSS/native ES modules. Serve `apps/web` at `/` alongside the authenticated same-origin `/api`. Open the backend origin, not `file:` or a separate production static host. A fresh server shows the approved **All in one** setup form; an existing server restores a session or shows sign-in. No demo accounts/tasks are created.
 
 ## Run with the Go server
 
@@ -8,17 +8,17 @@ From the repository root (Go 1.26.11+):
 
 ```sh
 CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks
-./bin/tasks create-user --db .data/tasks.sqlite3 --username dan
+./bin/tasks setup-key --db .data/tasks.sqlite3
 ./bin/tasks serve --host 127.0.0.1 --port 8787 --db .data/tasks.sqlite3 --web-root apps/web
 ```
 
-Enter passwords only at the hidden prompt. Open `http://127.0.0.1:8787/` for loopback development; production requires HTTPS. `go run ./cmd/tasks` accepts the same commands. Docker bundles the compiled server and these assets; see `docs/docker-deployment.md`. When upgrading an existing installation, keep passing its existing database path; rebranding does not rename or migrate your database.
+The key command prints a private, one-time key valid for 30 minutes; it refuses if an account already exists. Start `serve` in another terminal and open `http://127.0.0.1:8787/` for loopback development; production requires HTTPS. Enter the key and choose your username/password in the welcome form, then select **Create account & start**. Additional accounts still use `tasks create-user` and its hidden password prompt. `go run ./cmd/tasks` accepts the same commands. Docker bundles the compiled server and these assets; see `docs/docker-deployment.md`. When upgrading an existing installation, keep passing its existing database path; rebranding does not rename or migrate your database.
 
 ## Connection and data safety
 
-- Startup checks `/api/auth/session` before loading tasks. First login asks for username/password and shows the current origin read-only. Connection Settings reviews account/origin, tests the session, reauthenticates before saving changes, confirms different-user switches, and signs out.
+- Startup checks `/api/auth/setup` before choosing setup versus session restoration/sign-in. Status failure is a retryable connection error, never permission to create an account. Fresh setup collects key, username and new password in one form; successful creation opens the actual empty workspace without a forced task editor. Existing-server login asks for username/password and shows the current origin read-only. Connection Settings reviews account/origin, tests the session, reauthenticates before saving changes, confirms different-user switches, and signs out.
 - Web authentication uses only the browser-managed HttpOnly cookie. Requests use `credentials: same-origin`, `redirect: error`, and `cache: no-store`. Passwords are not trimmed, logged or persisted; login response tokens are ignored. Browser password-manager behavior is separate from application storage.
-- No task payloads, history, focus/order IDs, passwords or session tokens are written to browser storage. Startup/sign-out remove legacy `daymark-state-v1` and `daymark-order-*` entries. Server state is validated in memory only. Not now/queue selection survive refreshes in the current page, not reloads.
+- No setup keys, task payloads, history, focus/order IDs, passwords or session tokens are written to browser storage. Startup/sign-out remove legacy `daymark-state-v1` and `daymark-order-*` entries. Server state is validated in memory only. Not now/queue selection survive refreshes in the current page, not reloads.
 - Connection loss/401/sign-out clear task lists, order, and open task forms. There is no offline task view, offline queue, service worker, or pretend successful write. Reconnect reads authoritative state before enabling mutations.
 - Failed credentials do not replace a working cookie session. A successful reauthentication clears old task state before loading the account. A failed network request clears task data even when editing a connection.
 - Sign-out immediately clears local state and stores only a non-sensitive signed-out marker (`daymark-signed-out-v1`). Automatic session restoration stays blocked across reloads until explicit successful sign-in. If the server cannot revoke the HttpOnly cookie, a warning says remote revocation is unconfirmed. Local sign-out is not a server revocation guarantee; only the server can revoke/expire that cookie.

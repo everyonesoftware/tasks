@@ -88,11 +88,12 @@ func (l *loginLimiter) finish(peer string, failed bool) {
 }
 
 type httpHandler struct {
-	store       *Store
-	cfg         Config
-	webRoot     string
-	readTimeout time.Duration
-	limiter     loginLimiter
+	store        *Store
+	cfg          Config
+	webRoot      string
+	readTimeout  time.Duration
+	limiter      loginLimiter
+	setupLimiter loginLimiter
 }
 
 // NewHandler builds the same-origin API and confined static frontend. The store
@@ -228,6 +229,42 @@ func (h *httpHandler) dispatch(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	path := r.URL.Path
+	if (r.Method == "GET" || r.Method == "HEAD") && path == "/api/auth/setup" {
+		required, err := h.store.SetupRequired()
+		if err != nil {
+			return err
+		}
+		respondJSON(w, r, 200, map[string]any{"setupRequired": required})
+		return nil
+	}
+	if r.Method == "POST" && path == "/api/auth/setup" {
+		peer, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if retry := h.setupLimiter.begin(peer); retry != 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(retry))
+			return apiError("Too many setup attempts", 429)
+		}
+		failed := true
+		defer func() { h.setupLimiter.finish(peer, failed) }()
+		data, err := readRequestJSON(w, r)
+		if err != nil {
+			return err
+		}
+		key, okK := data["setupKey"].(string)
+		username, okU := data["username"].(string)
+		password, okP := data["password"].(string)
+		if len(data) != 3 || !okK || !okU || !okP {
+			return apiError("Expected setupKey, username and password strings")
+		}
+		login, err := h.store.CompleteSetup(key, username, password)
+		if err != nil {
+			return err
+		}
+		failed = false
+		token, _ := login["token"].(string)
+		w.Header().Set("Set-Cookie", h.sessionCookie(r, token, false))
+		respondJSON(w, r, 201, login)
+		return nil
+	}
 	if r.Method == "POST" && path == "/api/auth/login" {
 		peer, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if retry := h.limiter.begin(peer); retry != 0 {
@@ -443,6 +480,9 @@ func readRequestValue(w http.ResponseWriter, r *http.Request, login bool) (any, 
 	if !validUnicode && !login {
 		return nil, apiError("Invalid JSON request body")
 	}
+	if r.URL.Path == "/api/auth/setup" && !uniqueJSONObjectKeys(body) {
+		return nil, apiError("Expected unique setup fields")
+	}
 	d := json.NewDecoder(bytes.NewReader(body))
 	d.UseNumber()
 	var value any
@@ -459,6 +499,30 @@ func readRequestValue(w http.ResponseWriter, r *http.Request, login bool) (any, 
 		return nil, nil
 	}
 	return value, nil
+}
+
+// Setup credentials require an exact object, not last-value-wins decoding.
+func uniqueJSONObjectKeys(body []byte) bool {
+	d := json.NewDecoder(bytes.NewReader(body))
+	token, err := d.Token()
+	if err != nil || token != json.Delim('{') {
+		return false
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		token, err = d.Token()
+		key, ok := token.(string)
+		if err != nil || !ok || seen[key] {
+			return false
+		}
+		seen[key] = true
+		var value json.RawMessage
+		if d.Decode(&value) != nil {
+			return false
+		}
+	}
+	_, err = d.Token()
+	return err == nil
 }
 
 // encoding/json replaces unpaired UTF-16 surrogates. Reject them rather than

@@ -3,6 +3,7 @@ import {orderWaiting, deferOccurrence, readCachedState, canMutate, isCurrentRefr
 const $ = selector => document.querySelector(selector);
 import {createConnection} from './auth.mjs';
 import {fetchBuildVersion} from './version.mjs';
+import {welcomeMarkup} from './welcome.mjs';
 let buildVersion = 'Checking…';
 fetchBuildVersion().then(version => {
   buildVersion = version;
@@ -18,14 +19,31 @@ let view = 'today', editingId = null, archiveId = null, returnFocus = null;
 let mutationVersion = 0;
 let orderDate = '', order = [];
 let checking = true, authBusy = false, editingConnection = false, signedOut = false;
+let setupRequired = null;
 let connectionMessage = '', authError = '';
 const connection = createConnection({storage:browserStorage,onClear:()=> {
   state = null; connected = false; order = []; orderDate = ''; mutationVersion += 1;
   editingId = null; archiveId = null; returnFocus = null;
   for (const dialog of document.querySelectorAll('dialog')) dialog.close();
   $('#task-form').reset(); $('#archive-copy').textContent = '';
-  $('#view').replaceChildren();
+  if (!$('#setup-form') && !$('#auth-form')) $('#view').replaceChildren();
 }});
+function clearAuthSecrets() {
+  for (const id of ['#setup-key','#password']) if ($(id)) $(id).value='';
+}
+function replaceView(markup) {
+  clearAuthSecrets();
+  $('#view').innerHTML=markup;
+}
+async function initialize() {
+  if (refreshing || authBusy) return;
+  checking=true; refreshing=true; connectionMessage=''; render();
+  try { setupRequired=await connection.setupStatus(); }
+  catch (error) { connectionMessage=error.message; }
+  finally { refreshing=false; }
+  if (setupRequired === false) await refresh();
+  else { checking=false; render(); }
+}
 function loadOrder(date) {
   if (date !== orderDate) { orderDate = date; order = []; }
 }
@@ -43,6 +61,7 @@ function acceptState(next) {
 }
 const request = (path, options) => connection.request(path, options);
 async function refresh() {
+  if (setupRequired !== false || ($('#auth-form') && !connection.session)) return;
   if (refreshing || pending || authBusy || editingConnection || signedOut) return;
   refreshing = true;
   const startVersion = mutationVersion;
@@ -66,14 +85,21 @@ function render() {
   const focusKey = focused?.closest('#task-menu') ? 'task-options' : focused?.dataset?.focusKey;
   const doneOpen = Boolean($('#completed')?.open);
   const n = state?.today.filter(row => !row.completed).length ?? 0;
+  const welcomeScreen=checking || setupRequired !== false || !connection.session;
+  document.body.classList.toggle('welcome-screen',welcomeScreen);
+  $('.app-top').hidden=welcomeScreen;
   $('#navigation').innerHTML = connection.session && !signedOut ? ['today','upcoming','routines','settings'].map(name => `<button data-view="${name}" data-focus-key="nav-${name}" ${view === name ? 'aria-current="page"' : ''}><span aria-hidden="true">${({today:'◉',upcoming:'▦',routines:'↻',settings:'⚙'})[name]}</span>${name[0].toUpperCase()+name.slice(1)}${name === 'today' && state ? `<small>${n}</small>` : ''}</button>`).join('') : '';
   $('#add-task').hidden = !connection.session || view === 'settings' || editingConnection;
   $('#add-task').disabled = !connected || pending || authBusy;
-  $('#connection').hidden = connected && !pending || checking;
-  $('#connection').innerHTML = pending ? 'Saving changes…' : connected ? '' : `${esc(connectionMessage || 'Connection required. Tasks are only available while connected.')} <button id="retry" ${refreshing || authBusy ? 'disabled' : ''}>${refreshing ? 'Connecting…' : 'Retry connection'}</button>`;
+  $('#connection').hidden = welcomeScreen || connected && !pending || checking;
+  $('#connection').innerHTML = welcomeScreen ? '' : pending ? 'Saving changes…' : connected ? '' : `${esc(connectionMessage || 'Connection required. Tasks are only available while connected.')} <button id="retry" ${refreshing || authBusy ? 'disabled' : ''}>${refreshing ? 'Connecting…' : 'Retry connection'}</button>`;
   $('#view').setAttribute('aria-busy', String(pending || refreshing || authBusy));
   if (checking) {
-    $('#view').innerHTML = '<h1>Welcome to Tasks.</h1><p class="muted">Checking your session…</p>';
+    replaceView(welcomeMarkup('checking'));
+  } else if (setupRequired === null) {
+    replaceView(welcomeMarkup('error',connectionMessage));
+  } else if (setupRequired) {
+    renderSetup();
   } else if (!connection.session || editingConnection) {
     renderSignIn();
   } else if (view === 'settings') {
@@ -92,11 +118,24 @@ function render() {
     for (const button of dialog.querySelectorAll('button')) button.disabled = pending || (!connected && (button.type === 'submit' || button.id === 'confirm-archive'));
   }
 }
+function renderSetup() {
+  // Refresh, focus and offline events must not discard a partly completed form.
+  if (!$('#setup-form')) replaceView(welcomeMarkup('setup'));
+  setError('#setup-error',authError);
+  for (const control of $('#setup-form').querySelectorAll('button,input')) control.disabled=authBusy;
+  $('#setup-form').querySelector('button[type="submit"]').textContent=authBusy ? 'Creating account…' : 'Create account & start';
+}
 function renderSignIn() {
   // Leave an in-progress form intact during focus/periodic refresh.
   if ($('#auth-form')) {
-    setError('#auth-error',authError);
+    setError('#auth-error',authError || connectionMessage);
     for (const control of $('#auth-form').querySelectorAll('button,input:not([readonly])')) control.disabled = authBusy;
+    return;
+  }
+  if (!editingConnection) {
+    replaceView(welcomeMarkup('signin','',location.origin));
+    setError('#auth-error',authError || connectionMessage);
+    for (const control of $('#auth-form').querySelectorAll('button,input')) control.disabled=authBusy;
     return;
   }
   $('#view').innerHTML = `<h1>${editingConnection ? 'Edit connection.' : 'Welcome to Tasks.'}</h1><p class="page-sub">${editingConnection ? 'Re-enter your password to test and save this connection. Failed credentials leave your current session unchanged.' : 'Sign in to your server to see your tasks. Ask your server administrator for an account.'}</p><form id="auth-form" class="settings-panel"><h2>${editingConnection ? 'Connection details' : 'Sign in'}</h2><p id="auth-error" class="error" role="alert" hidden></p><label for="server-origin">Current server</label><input id="server-origin" readonly value="${esc(location.origin)}" aria-describedby="server-help"><p id="server-help" class="field-hint">This browser connects only to the server you opened. To use another server, open its address directly.</p><label for="username">Username</label><input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\\-]+" maxlength="64" required value="${esc(connection.session?.username || '')}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024"><p class="field-hint">Tasks never saves your password. Your browser may offer its own password manager.</p><footer>${editingConnection ? '<button type="button" id="cancel-connection">Cancel</button>' : ''}<button type="submit" class="primary">${editingConnection ? 'Test and save' : 'Sign in'}</button></footer></form>`;
@@ -115,11 +154,12 @@ function renderToday() {
   if (current) {
     focus = `<section class="focus-card" aria-label="Current task"><div class="focus-header"><span class="focus-eyebrow"><i></i>Current task</span><div class="task-menu"><button id="task-menu-trigger" aria-label="Current task options" aria-expanded="false" aria-controls="task-menu" class="menu-trigger" data-focus-key="task-options">⋮</button><div id="task-menu" class="menu-dropdown" hidden><button data-defer ${pending || waiting.length < 2 ? 'disabled' : ''}>Not now</button><button data-edit="${esc(current.taskId)}" ${disabled()}>Edit task</button><button data-archive="${esc(current.taskId)}" ${disabled()}>Archive task</button></div></div></div><h2>${esc(current.title)}</h2><p class="metadata">${metadata(current)}</p>${current.notes ? `<p class="task-notes">${esc(current.notes)}</p>` : ''}<div class="focus-actions"><button class="primary" data-complete="${esc(current.occurrenceId)}" data-focus-key="complete" ${disabled()}><span aria-hidden="true">✓</span> Mark done</button></div></section>`;
   } else if (!state.tasks.length) {
-    focus = '<section class="focus-card empty"><span class="focus-eyebrow">A fresh start</span><h2>Make room for what matters.</h2><p>Add your first task to start your day.</p><div class="focus-actions"><button class="primary" data-add '+disabled()+'>Add your first task</button></div></section>';
+    focus = '<section class="focus-card empty"><span class="focus-eyebrow">A fresh start</span><h2>Your first task goes here</h2><p>Add a one-off task or a routine you want to repeat.</p><div class="focus-actions"><button class="primary" data-add '+disabled()+'>Add your first task</button></div></section>';
   } else {
     focus = `<section class="focus-card empty"><span class="focus-eyebrow">${total ? 'Today, complete' : 'Nothing due today'}</span><h2>${total ? 'You’ve made room for the rest of your day.' : 'A little breathing room.'}</h2><p>Your upcoming tasks will be here when they’re due.</p></section>`;
   }
-  $('#view').innerHTML = `<h1>One thing at a time.</h1><p class="page-sub">${esc(dateLabel(state.date))} · ${waiting.length} ${waiting.length === 1 ? 'task' : 'tasks'} remaining</p>${progress}<div class="work-layout">${focus}<section class="queue" aria-label="The rest of today">${waiting.length > 1 ? `<h2 class="queue-title">Still to come <span>${waiting.length-1} tasks</span></h2>${waiting.slice(1).map((row,i)=>`<button class="queue-row" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}" ${pending ? 'disabled' : ''}><span class="queue-number">${String(i+2).padStart(2,'0')}</span><span class="row-copy"><strong>${esc(row.title)}</strong><small>${metadata(row)}</small></span><span aria-hidden="true">›</span></button>`).join('')}` : ''}</section></div>${done.length ? `<details id="completed" class="completed"><summary>Completed today (${done.length})</summary>${done.map(row=>`<div class="done-row"><span aria-hidden="true">✓</span><span>${esc(row.title)}</span><button data-undo="${esc(row.occurrenceId)}" data-focus-key="undo-${esc(row.occurrenceId)}" aria-label="Undo completion of ${esc(row.title)}" ${disabled()}>Undo</button></div>`).join('')}</details>` : ''}`;
+  const emptyQueue = !state.tasks.length ? '<h2 class="queue-title">Waiting tasks</h2><p class="muted">No tasks yet. Your queue will build as you add them.</p>' : '';
+  $('#view').innerHTML = `<h1>One thing at a time.</h1><p class="page-sub">${esc(dateLabel(state.date))} · ${waiting.length} ${waiting.length === 1 ? 'task' : 'tasks'} remaining</p>${progress}<div class="work-layout">${focus}<section class="queue" aria-label="The rest of today">${waiting.length > 1 ? `<h2 class="queue-title">Still to come <span>${waiting.length-1} tasks</span></h2>${waiting.slice(1).map((row,i)=>`<button class="queue-row" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}" ${pending ? 'disabled' : ''}><span class="queue-number">${String(i+2).padStart(2,'0')}</span><span class="row-copy"><strong>${esc(row.title)}</strong><small>${metadata(row)}</small></span><span aria-hidden="true">›</span></button>`).join('')}` : emptyQueue}</section></div>${done.length ? `<details id="completed" class="completed"><summary>Completed today (${done.length})</summary>${done.map(row=>`<div class="done-row"><span aria-hidden="true">✓</span><span>${esc(row.title)}</span><button data-undo="${esc(row.occurrenceId)}" data-focus-key="undo-${esc(row.occurrenceId)}" aria-label="Undo completion of ${esc(row.title)}" ${disabled()}>Undo</button></div>`).join('')}</details>` : ''}`;
 }
 function renderUpcoming() {
   let previous = '';
@@ -173,7 +213,7 @@ function closeMenu(restore = false) {
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) { if (!event.target.closest('.task-menu')) closeMenu(); return; }
-  if (button.id === 'retry') { signedOut = false; refresh(); return; }
+  if (button.id === 'retry') { if (setupRequired === null) initialize(); else { signedOut = false; refresh(); } return; }
   if (button.id === 'edit-connection') { editingConnection = true; authError = ''; render(); $('#username').focus(); return; }
   if (button.id === 'cancel-connection') { editingConnection = false; authError = ''; $('#password').value = ''; render(); return; }
   if (button.id === 'test-session') { refresh().then(()=> { if (connected) notify('Session verified. Connected to your server.'); }); return; }
@@ -214,6 +254,24 @@ document.addEventListener('click', event => {
   if (!event.target.closest('.task-menu')) closeMenu();
 });
 document.addEventListener('submit', async event => {
+  if (event.target.id === 'setup-form') {
+    event.preventDefault();
+    if (authBusy || pending || refreshing || setupRequired !== true) return;
+    const setupKey=$('#setup-key').value, username=$('#username').value, password=$('#password').value;
+    $('#password').value='';
+    authBusy=true; authError=''; render();
+    try {
+      await connection.setup(setupKey,username,password);
+      clearAuthSecrets(); setupRequired=false; signedOut=false; editingConnection=false;
+      view='today'; connectionMessage='';
+    } catch (error) {
+      authError=error.message;
+      if (error.status === 409) { clearAuthSecrets(); setupRequired=false; }
+    }
+    finally { authBusy=false; render(); }
+    if (connection.session && !authError) await refresh();
+    return;
+  }
   if (event.target.id !== 'auth-form') return;
   event.preventDefault();
   if (authBusy || pending || refreshing) return;
@@ -259,9 +317,10 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Tab' && event.target.closest('#task-menu')) setTimeout(()=>closeMenu(),0);
 });
 window.addEventListener('focus', refresh);
+window.addEventListener('pagehide', clearAuthSecrets);
 window.addEventListener('online', refresh);
 window.addEventListener('offline', ()=> { connection.clear(); connectionMessage = 'Connection required. Reconnect to access your tasks.'; render(); });
 document.addEventListener('visibilitychange', ()=> { if (!document.hidden) refresh(); });
 
 setInterval(()=> { if (!document.hidden) refresh(); }, 30_000);
-render(); refresh();
+render(); initialize();

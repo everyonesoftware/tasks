@@ -9,7 +9,8 @@ import (
 )
 
 const authSchema = `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE UNIQUE, salt BLOB NOT NULL, passwordHash BLOB NOT NULL, iterations INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(tokenHash TEXT PRIMARY KEY,userId TEXT NOT NULL REFERENCES users(id),expiresAt TEXT NOT NULL);`
+CREATE TABLE IF NOT EXISTS sessions(tokenHash TEXT PRIMARY KEY,userId TEXT NOT NULL REFERENCES users(id),expiresAt TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS setup_state(id INTEGER PRIMARY KEY CHECK(id=1),keyHash TEXT NOT NULL,expiresAt TEXT NOT NULL);`
 
 type Store struct {
 	Path  string

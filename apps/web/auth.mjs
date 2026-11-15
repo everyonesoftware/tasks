@@ -11,12 +11,21 @@ export function createConnection({storage, fetcher=globalThis.fetch, onClear=()=
   const signedOutKey='daymark-signed-out-v1';
   let signedOut=false;
   try { signedOut=storage?.getItem(signedOutKey)==='1'; } catch { /* Storage is optional. */ }
-  const acceptSession = body => {
+  const acceptSession = (body, proposed=false) => {
     if (!body || typeof body.username !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(body.username) || (body.expiresAt !== undefined && typeof body.expiresAt !== 'string')) {
-      connection.clear(true);
+      if (!proposed) connection.clear(true);
       throw new Error('Connection required. The server returned an invalid session.');
     }
     return {username:body.username,expiresAt:body.expiresAt};
+  };
+  const saveSession = body => {
+    const session = acceptSession(body,true);
+    connection.clear(true);
+    connection.session = session;
+    connection.connected = true;
+    signedOut=false;
+    try { storage?.removeItem(signedOutKey); } catch { /* A retained marker fails closed on reload. */ }
+    return session;
   };
   const connection = {
     session:null,
@@ -40,6 +49,12 @@ export function createConnection({storage, fetcher=globalThis.fetch, onClear=()=
       }
       if (started !== generation) throw new Error('Connection changed. Retry using the current session.');
       if (!response.ok) {
+        if (path === '/api/auth/setup') {
+          const retryAfter=response.headers?.get('Retry-After');
+          const wait=/^\d{1,6}$/.test(retryAfter || '') ? ` Wait ${retryAfter} seconds before trying again.` : ' Wait before trying again.';
+          const messages={401:'That setup key is invalid or expired. Ask the server operator for a new key.',400:'Check your username and password. Use 1–64 letters, numbers, dots, underscores or hyphens for your username and 8–1024 characters for your password.',409:'This server is already set up. Sign in with its existing account.',429:`Too many setup attempts.${wait}`};
+          if (messages[response.status]) throw Object.assign(new Error(messages[response.status]),{status:response.status});
+        }
         if (response.status >= 500) { connection.clear(); throw new Error('Connection required. The server is unavailable; reconnect to verify your tasks.'); }
         if (response.status === 401) {
           if (path === '/api/auth/login') throw new Error('Invalid username or password. Check your credentials.');
@@ -56,14 +71,18 @@ export function createConnection({storage, fetcher=globalThis.fetch, onClear=()=
       if (started !== generation) throw new Error('Connection changed. Retry using the current session.');
       return body;
     },
+    async setupStatus() {
+      const body = await connection.request('/api/auth/setup');
+      if (!body || typeof body.setupRequired !== 'boolean') throw new Error('The server returned an invalid setup status. Retry to check this server.');
+      return body.setupRequired;
+    },
     async login(username, password) {
       const body = await connection.request('/api/auth/login', {method:'POST',body:JSON.stringify({username,password})});
-      connection.clear(true);
-      connection.session = acceptSession(body);
-      connection.connected = true;
-      signedOut=false;
-      try { storage?.removeItem(signedOutKey); } catch { /* A retained marker fails closed on reload. */ }
-      return connection.session;
+      return saveSession(body);
+    },
+    async setup(setupKey, username, password) {
+      const body = await connection.request('/api/auth/setup', {method:'POST',body:JSON.stringify({setupKey,username,password})});
+      return saveSession(body);
     },
     async logout() {
       signedOut=true;

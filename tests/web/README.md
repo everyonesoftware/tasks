@@ -17,6 +17,7 @@ From the repository root with Go, Node 22+ and Chromium on PATH:
 
 ```sh
 node tests/web/api-smoke.mjs
+node tests/web/setup-smoke.mjs
 ```
 
 The script builds the actual Go server, creates a fresh database and two disposable accounts under the system scratch directory (`TMPDIR`), starts an ephemeral loopback server, and launches Chromium with a fresh profile. It never opens a live user database and stops its server/browser when finished. It needs no npm packages and no Python.
@@ -24,6 +25,8 @@ The script builds the actual Go server, creates a fresh database and two disposa
 Checks include first-login/current-origin display, actual HttpOnly cookie authentication, HTML-looking task escaping, no persistent browser task/credential data, completion/undo with independent API read-back, failed credentials preserving a session, confirmed two-account isolation, task creation from the browser, 320/390/1440px layouts, offline logout surviving reload, explicit re-login, and server-side logout revocation. A JSON report and PNG screenshot are saved in the reported scratch directory.
 
 The persisted browser sign-out marker contains no task or credential data. Offline logout is local clearing, not proof of remote session revocation.
+
+The separate first-run runner starts a genuinely empty database and verifies the operator `setup-key` command, unauthenticated setup status, the single-form welcome, rejected keys, responsive desktop/mobile layout, cookie-backed first-account creation, no browser credential/task storage, first-task creation with independent read-back, reload/session restoration, setup lockout after provisioning, subsequent sign-in and fail-closed setup-status errors with Retry. It writes a JSON report plus desktop/phone screenshots under the reported scratch directory and never prints the generated setup key.
 
 ## Backend contract checks
 

@@ -37,7 +37,7 @@ func parseArgs(args []string) (options, error) {
 		cfg.action, args = args[0], args[1:]
 	}
 	switch cfg.action {
-	case "serve", "create-user", "reset-password", "adopt-legacy", "healthcheck":
+	case "serve", "create-user", "reset-password", "adopt-legacy", "healthcheck", "setup-key":
 	default:
 		return cfg, errors.New("unknown action")
 	}
@@ -131,7 +131,7 @@ func checkHealth(url, ca string, connectAddress ...string) error {
 func run(args []string, in io.Reader, out, stderr io.Writer) int {
 	cfg, err := parseArgs(args)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(out, "Tasks private Go server\nUsage: tasks [serve|create-user|reset-password|adopt-legacy|healthcheck] [flags]\n--host --port --db --web-root --allowed-host --public-origin --tls-cert --tls-key\n--username --password-stdin --allow-insecure-http\nHealthcheck: --url --ca --connect-address")
+		fmt.Fprintln(out, "Tasks private Go server\nUsage: tasks [serve|create-user|reset-password|adopt-legacy|setup-key|healthcheck] [flags]\n--host --port --db --web-root --allowed-host --public-origin --tls-cert --tls-key\n--username --password-stdin --allow-insecure-http\nSetup: setup-key --db PATH (prints a first-user setup key to stdout)\nHealthcheck: --url --ca --connect-address")
 		return 0
 	}
 	if err != nil {
@@ -149,7 +149,7 @@ func run(args []string, in io.Reader, out, stderr io.Writer) int {
 		return serve(cfg, out, stderr)
 	}
 	var password string
-	if cfg.action != "adopt-legacy" {
+	if cfg.action != "adopt-legacy" && cfg.action != "setup-key" {
 		if cfg.passwordStdin {
 			password, err = readPassword(in)
 		} else {
@@ -167,6 +167,14 @@ func run(args []string, in io.Reader, out, stderr io.Writer) int {
 	}
 	defer store.Close()
 	switch cfg.action {
+	case "setup-key":
+		var key, expiresAt string
+		key, expiresAt, err = store.GenerateSetupKey()
+		if err == nil {
+			fmt.Fprintln(out, key)
+			fmt.Fprintf(stderr, "Setup key expires at %s. Enter it on this server's first-user setup page over HTTPS. Generating another key invalidates this one.\n", expiresAt)
+			return 0
+		}
 	case "create-user":
 		_, err = store.CreateUser(cfg.username, password)
 	case "reset-password":

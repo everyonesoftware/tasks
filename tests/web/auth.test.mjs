@@ -1,6 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const auth = await import('../../apps/web/auth.mjs').catch(()=>({}));
+test('setup status is strictly validated and fetched without restoring a cookie session', async()=>{
+  let result=response({setupRequired:true}), sent;
+  const c=auth.createConnection({fetcher:async(path,options)=>{sent=[path,options];if(result instanceof Error) throw result;return result;}});
+  assert.equal(typeof c.setupStatus,'function');
+  assert.equal(await c.setupStatus(),true);
+  assert.equal(sent[0],'/api/auth/setup');
+  assert.equal(sent[1].credentials,'same-origin');
+  assert.equal(sent[1].redirect,'error');assert.equal(sent[1].cache,'no-store');
+  assert.equal(c.session,null);assert.equal(c.connected,false);
+  result=response({setupRequired:false});assert.equal(await c.setupStatus(),false);
+  for (const malformed of [{},null,{setupRequired:'false'},{setupRequired:0}]) {
+    result=response(malformed);await assert.rejects(c.setupStatus(),/setup status/i);
+  }
+  result=response({},503);await assert.rejects(c.setupStatus(),/unavailable/i);
+  result=new Error('offline');await assert.rejects(c.setupStatus(),/Connection required/);
+  result={ok:true,status:200,json:async()=>{throw new Error('invalid JSON')}};
+  await assert.rejects(c.setupStatus(),/could not be read/i);
+});
+test('setup accepts a verified session using only the cookie and exact ephemeral credentials', async()=>{
+  const items=new Map([['daymark-signed-out-v1','1']]);
+  const storage={get length(){return items.size},key:i=>[...items.keys()][i],getItem:k=>items.get(k),removeItem:k=>items.delete(k),setItem:(k,v)=>items.set(k,v)};
+  let sent;
+  const c=auth.createConnection({storage,fetcher:async(path,options)=>{sent=[path,options];return response({username:'dan',expiresAt:'later',token:'never-retain-token'},201);}});
+  assert.equal(typeof c.setup,'function');
+  await c.setup('one-time-key','dan',' untrimmed password ');
+  assert.deepEqual(JSON.parse(sent[1].body),{setupKey:'one-time-key',username:'dan',password:' untrimmed password '});
+  assert.equal(sent[0],'/api/auth/setup');assert.equal(sent[1].method,'POST');
+  assert.equal(sent[1].credentials,'same-origin');assert.equal(sent[1].redirect,'error');assert.equal(sent[1].cache,'no-store');
+  assert.deepEqual(c.session,{username:'dan',expiresAt:'later'});assert.equal(c.connected,true);
+  assert.equal(items.size,0);assert.doesNotMatch(JSON.stringify(c),/one-time-key|password|never-retain-token/);
+});
+test('bad proposed setup or login session does not replace a working account', async()=>{
+  let result=response({username:'old'}),clears=0;
+  const c=auth.createConnection({onClear:()=>clears++,fetcher:async()=>result});
+  await c.check();const old=c.session;
+  result=response({username:'<invalid>'},201);
+  assert.equal(typeof c.setup,'function');
+  await assert.rejects(c.setup('key','new','password'),/invalid session/);
+  assert.equal(c.session,old);assert.equal(c.connected,true);assert.equal(clears,0);
+  await assert.rejects(c.login('new','password'),/invalid session/);
+  assert.equal(c.session,old);assert.equal(c.connected,true);assert.equal(clears,0);
+});
+test('setup errors explain key, validation, conflict and rate limiting without expiring a session', async()=>{
+  let result=response({username:'old'});
+  const c=auth.createConnection({fetcher:async()=>result});await c.check();const old=c.session;
+  for (const [status,message] of [[401,/setup key.*invalid or expired/i],[400,/username.*password/i],[409,/already set up/i],[429,/30 seconds/i]]) {
+    result={...response({},status),headers:{get:name=>name==='Retry-After'?'30':null}};
+    await assert.rejects(c.setup('key','new','password'),error=>error.status===status && message.test(error.message));
+    assert.equal(c.session,old);assert.equal(c.connected,true);
+  }
+});
 test('task access requires authentication; 401 and network loss erase memory', async()=>{
   let clears=0, result=response({username:'dan'}), calls=0;
   const c=auth.createConnection({onClear:()=>clears++,fetcher:async()=>{calls++;if(result instanceof Error) throw result;return result;}});

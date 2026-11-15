@@ -81,7 +81,7 @@ try {
   await cdp('Network.enable');await navigate();
   assert.equal(await js('document.title'), 'Tasks');
   assert.equal(await js("document.querySelector('.brand').getAttribute('aria-label')"), 'Tasks home');
-  assert.ok(await js("document.querySelector('#view').textContent.includes('Welcome to Tasks.')"));
+  assert.equal(await js("document.querySelector('#signin-heading').textContent"), 'Sign in to Tasks');
   checks.push('Tasks title, accessible brand and sign-in copy');
   assert.ok(await js("document.querySelector('#password').value==='' && document.querySelector('#server-origin').readOnly"));
   checks.push('first-login and current origin');

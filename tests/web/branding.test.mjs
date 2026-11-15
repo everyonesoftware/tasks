@@ -12,7 +12,8 @@ test('web shell, sign-in, Settings About and PWA consistently identify Tasks', a
   assert.match(html, /<title>Tasks<\/title>/);
   assert.match(html, /aria-label="Tasks home"/);
   assert.match(html, /class="brand"[^>]*>[\s\S]*?<\/span>Tasks<\/a>/);
-  assert.match(html, /Connecting to Tasks…/);
+  assert.match(html, /Welcome to Tasks\./);
+  assert.match(html, /Checking this server…/);
   assert.match(html, /Tasks needs JavaScript enabled/);
   assert.match(app, /Welcome to Tasks\./);
   assert.match(app, /Connecting to your Tasks server\./);

@@ -11,6 +11,7 @@ Tasks is the new product name for Daymark, not a new installation identity. Exis
 - Current task, top-right three-dot menu (**Not now**), bottom-right **Mark done**, queue picking, and completion undo.
 - Today, Upcoming, Routines, and Settings; create/edit/archive tasks.
 - Authenticated server accounts with private, per-user tasks and completion history.
+- First-run web welcome creates the first account using one form and an operator-issued one-time setup key. Later visits restore your session or show sign-in.
 - First-install Android setup asks for server URL, username, and password. Settings reviews/tests/updates that connection and signs out.
 - Android Settings shows installed version/build and checks actual stable GitHub releases. Downloaded updates require digest/package/version/signer verification and the user's Android installation confirmation.
 
@@ -20,7 +21,7 @@ Task records and history are persisted only in the server's SQLite database. Cli
 
 Android stores only connection details and a platform-protected session token, never the password. The browser uses an HttpOnly session cookie rather than storing a token in localStorage. Sign-out clears local account state; if the server cannot be reached, remote session revocation cannot be confirmed.
 
-A new database has no sample tasks and no default username or password. Server administrators provision accounts separately; the Android app does not create an account by submitting arbitrary credentials.
+A new database has no sample tasks and no default username or password. The first account can be created in the web welcome screen with a one-time setup key from the server operator. Additional accounts are provisioned by the administrator CLI; the Android app does not create an account by submitting arbitrary credentials.
 
 ## Run and provision the server
 
@@ -32,7 +33,15 @@ CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks
 
 The examples below use that binary; `go run ./cmd/tasks` accepts the same subcommands and flags for development.
 
-From this directory, provision an account in the persistent server database:
+For the **All in one** browser setup, start the server using the transport instructions below and generate a key against that same database:
+
+```sh
+./bin/tasks setup-key --db .data/daymark.sqlite3
+```
+
+Open the server in your browser, paste the key into **Setup key**, choose a username/password, and select **Create account & start**. The key expires after 30 minutes; running the command again replaces it. Keep it out of chat, URLs, logs and source files. The command refuses once an account exists. A successful setup signs you in to an empty workspace with **Add your first task**.
+
+Alternatively, create the first account directly, or add later accounts, from this directory:
 
 ```sh
 ./bin/tasks create-user --db .data/daymark.sqlite3 --username dan

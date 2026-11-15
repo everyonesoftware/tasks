@@ -12,7 +12,19 @@ Go 1.26.11+ with pure-Go SQLite (`modernc.org/sqlite`). Build from the repositor
 
 Create/reset asks for the password twice at a hidden terminal prompt without echoing it. For automation, add `--password-stdin` and supply exactly one password line through a protected pipe/input stream; never put passwords in command-line arguments, shell history, logs, or source. Only the terminating newline is removed; spaces remain part of the password. Passwords are 8..1024 Unicode characters with valid UTF-8 encoding. Usernames are 1..64 ASCII letters/digits/dot/underscore/hyphen, case-insensitive identity, with original spelling returned to clients. Duplicate names are rejected. Reset revokes every session for the account, including a concurrent old-password login.
 
-Existing databases migrate in place without deleting tasks/completions. Legacy tasks get a NULL owner and remain invisible to every account until the administrator explicitly runs `adopt-legacy`. Adoption assigns **all still-unassigned tasks**, including archived rows and their completion history, to that existing account; it never reassigns owned rows. Back up before migration/adoption and verify the intended database/account. No registration, user deletion, per-task reassignment, restore/import, or HTTP account administration is implemented.
+Existing databases migrate in place without deleting tasks/completions. Legacy tasks get a NULL owner and remain invisible to every account until the administrator explicitly runs `adopt-legacy`. Adoption assigns **all still-unassigned tasks**, including archived rows and their completion history, to that existing account; it never reassigns owned rows. Back up before migration/adoption and verify the intended database/account. No public registration, user deletion, per-task reassignment, restore/import, or general HTTP account administration is implemented. The key-gated first-user bootstrap below is the only browser provisioning route.
+
+### First-user browser setup
+
+Start the server with your normal private database and generate a one-time key against the **same database**:
+
+```sh
+./bin/tasks setup-key --db /private/daymark.sqlite3
+```
+
+The explicit command prints the key on stdout; normal server startup/logging does not. Keep that output private. Open the server's HTTPS origin (loopback HTTP only for development), enter the key and choose your username/password in the **All in one** welcome form. Success signs you in and opens the empty workspace. Do not put keys/passwords in URLs, source, `.env`, logs or chat.
+
+The random 32-byte key is stored only as a SHA256 digest with a 30-minute expiry. Re-running `setup-key` replaces the previous key. The pending digest survives a server restart; an expired key needs explicit rotation. Both setup/key generation refuse after any account exists. Initial account insertion, key consumption and session creation are atomic across concurrent Store instances; invalid credentials or failed writes leave no partial account and do not consume the key. Creating the first account through `create-user` also closes web setup. No legacy tasks are assigned implicitly.
 
 ## Transport and startup
 
@@ -61,6 +73,8 @@ Without `--url`, the URL is `https://$TASKS_HOST:8787/health`. For HTTPS, the pr
 
 ## Authentication and isolation
 
+- `GET /api/auth/setup` (also HEAD) returns only `{ "setupRequired": true|false }`, without authentication or key material, with no-store caching and the normal transport/Host guards.
+- `POST /api/auth/setup` takes exactly `setupKey`, `username`, and `password`. A valid, unexpired key on a server without users atomically creates the first account and session, returning 201 with the login response/cookie shape. Bad keys return 401, invalid accounts 400, already-configured servers 409, and excess attempts 429 with Retry-After. The same body-size, Unicode, HTTPS and browser-origin protections apply; this is not a general registration endpoint.
 - `POST /api/auth/login` takes JSON `{ "username": "Dan", "password": "..." }`; returns only `token`, canonical `username`, and UTC `expiresAt`. Also sets `daymark_session`, HttpOnly, SameSite=Strict, Path=/, 30-day Max-Age, Secure for native TLS/configured HTTPS proxy.
 - `GET /api/auth/session` returns `username` and `expiresAt`, never the token/password.
 - `POST /api/auth/logout` needs no body, revokes the presented session, expires the cookie, and returns 204. A missing/expired/revoked session returns 401; clients must still clear their local session if logout cannot reach the server.
@@ -70,7 +84,7 @@ Without `--url`, the URL is `https://$TASKS_HOST:8787/health`. For HTTPS, the pr
 - Login permits five failures/in-flight attempts per socket peer per 60-second window, then returns 429 plus Retry-After. Successful logins do not clear prior failures. The limiter is concurrency-safe, bounded to 4096 peers, fail-closed at capacity, and memory-only (restart resets it); deploy an additional proxy/network limit for hostile traffic. It is not protection against distributed denial of service.
 - State, create, edit, archive, complete, undo, and export all use authenticated ownership. Foreign IDs return 404. Export includes only that owner's active/archived tasks and completions, never users/password/session tables or owner IDs. No anonymous fallback, persistent client task cache, permissive CORS, or credential redirect is added.
 
-`GET /health` is unauthenticated and returns the release's commit-count version (or `dev` for an unversioned local Go build). See `docs/ci-publishing.md` for versioned builds. Static sign-in assets are public, but contain no task payloads. GET/HEAD API data is authenticated; HEAD sends the corresponding headers without a body. Unsupported methods pass through API security/authentication and return controlled JSON 405 errors (no echoed request/credentials).
+`GET /health` is unauthenticated and returns the release's commit-count version (or `dev` for an unversioned local Go build). See `docs/ci-publishing.md` for versioned builds. Static welcome/sign-in assets are public, but contain no task payloads. Except for setup status, GET/HEAD API data is authenticated; HEAD sends the corresponding headers without a body. Unsupported methods pass through API security/authentication and return controlled JSON 405 errors (no echoed request/credentials).
 
 ## Guards, persistence, and backups
 

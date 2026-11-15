@@ -28,12 +28,11 @@ read. This sets the server's public HTTPS origin for Secure cookies and browser
 Origin/Referer validation, not its bind address or backend port. It does not
 configure DNS, certificates, or Tailscale Serve itself.
 
-## 2. Pull, provision, and start
+## 2. Pull, start, and set up your first account
 
 ```sh
 docker compose config --quiet
 docker compose pull
-docker compose run --rm --no-deps tasks create-user --db /data/daymark.sqlite3 --username dan
 docker compose up -d
 tailscale serve --bg http://127.0.0.1:8787
 tailscale serve status
@@ -41,15 +40,37 @@ docker compose ps
 docker compose logs --tail=50 tasks
 ```
 
-The account command asks for the password twice at a hidden terminal prompt; no
-password goes into `.env` or command-line arguments. No default accounts or tasks
-are created. If you changed `DAYMARK_PORT`, use that local port in the Serve
-command. Follow any Tailscale prompt to enable HTTPS/Serve for your tailnet.
-Open `https://YOUR_TAILSCALE_HOST/`, then sign in. See the official
+If you changed `DAYMARK_PORT`, use that local port in the Serve command. Follow
+any Tailscale prompt to enable HTTPS/Serve for your tailnet. For a new database,
+generate a one-time setup key from an operator terminal:
+
+```sh
+docker compose exec tasks tasks setup-key --db /data/daymark.sqlite3
+```
+
+Open `https://YOUR_TAILSCALE_HOST/`. The **All in one** welcome form asks for the
+setup key and your chosen username/password. Select **Create account & start**
+to enter the empty workspace. No default accounts or sample tasks are created.
+The key is shown only by the explicit administrator command, not in normal
+server logs. Treat it as a secret: do not paste it into chat, a URL, `.env` or a
+log file. It expires in 30 minutes; running the command again invalidates the
+previous key. Once an account exists, setup/key generation are disabled and the
+browser shows sign-in instead. These commands require a build containing the
+first-run setup feature; an older image with no `setup-key` command must be
+updated before using browser setup.
+
+To skip browser setup or provision another account:
+
+```sh
+docker compose run --rm --no-deps tasks create-user --db /data/daymark.sqlite3 --username dan
+```
+
+That command asks for the password twice at a hidden terminal prompt; no password
+goes into `.env` or command-line arguments. See the official
 [Tailscale Serve reference](https://tailscale.com/kb/1242/tailscale-serve).
 
 The image's `docker-entrypoint.sh` supplies the normal server arguments; Compose
-only passes `TASKS_HOST`. Explicit commands such as `create-user` still override
+only passes `TASKS_HOST`. Explicit commands such as `setup-key` or `create-user` still override
 normal startup and do not require the hostname when invoking the image directly.
 The entrypoint uses the existing `--allow-insecure-http` opt-in for the
 local Docker bridge hop; `--public-origin` keeps session cookies Secure and browser
