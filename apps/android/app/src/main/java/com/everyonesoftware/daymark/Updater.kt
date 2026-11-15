@@ -16,7 +16,7 @@ class GithubTransport : UpdateTransport {
  private val client=OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).connectTimeout(15,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).callTimeout(120,TimeUnit.SECONDS).build()
  internal fun requestFor(url: String): Request = Request.Builder().url(url)
   .header("Accept",if(url==RELEASE_URL) "application/vnd.github+json" else "application/octet-stream")
-  .header("User-Agent","Daymark-Android").build()
+  .header("User-Agent","Tasks-Android").build()
  override suspend fun get(url: String,limit: Long,consume: (ByteArray,Int)->Unit): Int = withContext(Dispatchers.IO) {
   require(GithubPolicy.initial(url)); var current=url
   val context=coroutineContext
@@ -67,7 +67,7 @@ class UpdateService(private val transport: UpdateTransport,private val sdk: Int)
  suspend fun download(release: Release,dir: File,installed: ApkIdentity,inspect: (File)->ApkIdentity,progress: (Long)->Unit): File = withContext(Dispatchers.IO) {
   require(release.size in 1..MAX_APK_BYTES && release.manifest.versionCode>installed.versionCode)
   require(GithubPolicy.initial(release.apkUrl))
-  dir.mkdirs(); val stage=File(dir,"update.part");val ready=File(dir,"Daymark.apk");stage.delete();ready.delete()
+  dir.mkdirs(); val stage=File(dir,"update.part");val ready=File(dir,"Tasks.apk");stage.delete();ready.delete()
   try {
    val digest=MessageDigest.getInstance("SHA-256");var count=0L
    stage.outputStream().use { output ->

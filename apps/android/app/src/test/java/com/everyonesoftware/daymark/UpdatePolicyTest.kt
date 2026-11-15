@@ -3,7 +3,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.json.JSONObject
 class UpdatePolicyTest {
- private fun manifest()=JSONObject("""{"schemaVersion":1,"packageName":"com.everyonesoftware.daymark","versionName":"0.3.0","versionCode":3,"minSdk":26,"apkAssetName":"Daymark-0.3.0-3.apk","sha256":"${"a".repeat(64)}"}""")
+ private fun manifest()=JSONObject("""{"schemaVersion":1,"packageName":"com.everyonesoftware.daymark","versionName":"0.3.0","versionCode":3,"minSdk":26,"apkAssetName":"Tasks-0.3.0-3.apk","sha256":"${"a".repeat(64)}"}""")
  @Test fun manifestRejectsMalformedIdentityBoundsDigestAndAsset() {
   assertEquals(3,ReleaseManifest.parse(manifest(),35).versionCode)
   for((key,value) in listOf("schemaVersion" to 2,"packageName" to "evil","versionCode" to -1,"minSdk" to 99,"sha256" to "BAD","apkAssetName" to "../evil.apk")) {

@@ -1,4 +1,19 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
+// CI supplies the full-history count; local builds must have complete Git history.
+val daymarkVersion = providers.environmentVariable("DAYMARK_VERSION").orNull ?: run {
+ val shallow = providers.exec {
+  workingDir(rootProject.projectDir)
+  commandLine("git", "rev-parse", "--is-shallow-repository")
+ }.standardOutput.asText.get().trim()
+ require(shallow == "false") { "Android version requires complete Git history; fetch full history or set DAYMARK_VERSION." }
+ providers.exec {
+  workingDir(rootProject.projectDir)
+  commandLine("git", "rev-list", "--count", "HEAD")
+ }.standardOutput.asText.get().trim()
+}
+val daymarkVersionCode = daymarkVersion.toIntOrNull()?.takeIf {
+ daymarkVersion.matches(Regex("[1-9][0-9]*")) && it <= 2100000000
+} ?: throw GradleException("DAYMARK_VERSION must be a positive decimal commit count no greater than 2100000000.")
 // Release keys are provisioned outside the checkout; never print values.
 val signingNames = listOf("DAYMARK_KEYSTORE_PATH", "DAYMARK_KEYSTORE_PASSWORD", "DAYMARK_KEY_ALIAS", "DAYMARK_KEY_PASSWORD")
 val signingValues = signingNames.associateWith { providers.environmentVariable(it).orNull }
@@ -24,7 +39,7 @@ android {
  namespace = "com.everyonesoftware.daymark"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "com.everyonesoftware.daymark"; minSdk = 26; targetSdk = 36; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+ defaultConfig { applicationId = "com.everyonesoftware.daymark"; minSdk = 26; targetSdk = 36; versionCode = daymarkVersionCode; versionName = daymarkVersion; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
  buildFeatures { compose = true; buildConfig = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 

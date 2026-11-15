@@ -1,0 +1,158 @@
+name: Publish Tasks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize publishers; the remote-head tag check also protects old run replays.
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute shared commit-count version
+        id: version
+        run: |
+          version="$(bash scripts/build-version.sh)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Build version: $version ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Test and vet server and deployment
+        env:
+          DAYMARK_EXPECT_VERSION: ${{ steps.version.outputs.version }}
+          DAYMARK_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          go test -race -ldflags="-X github.com/everyonesoftware/tasks/services/server.Version=$DAYMARK_VERSION" ./...
+          go vet ./...
+      - name: Test web helpers
+        run: node --test tests/web/*.test.mjs
+
+  container:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Choose tags without rolling back latest on old reruns
+        id: tags
+        env:
+          DAYMARK_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          tags="$(bash scripts/container-tags.sh "$DAYMARK_VERSION" "$GITHUB_SHA")"
+          {
+            echo 'tags<<DAYMARK_IMAGE_TAGS'
+            echo "$tags"
+            echo 'DAYMARK_IMAGE_TAGS'
+          } >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish web and server image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VERSION=${{ needs.validate.outputs.version }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  android:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DAYMARK_VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Test and lint Android
+        working-directory: apps/android
+        run: bash gradlew :app:testDebugUnitTest :app:lintDebug --console=plain --max-workers=2
+      - name: Build signed release APK
+        working-directory: apps/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DAYMARK_KEYSTORE_BASE64 }}
+          DAYMARK_KEYSTORE_PASSWORD: ${{ secrets.DAYMARK_KEYSTORE_PASSWORD }}
+          DAYMARK_KEY_ALIAS: ${{ secrets.DAYMARK_KEY_ALIAS }}
+          DAYMARK_KEY_PASSWORD: ${{ secrets.DAYMARK_KEY_PASSWORD }}
+          DAYMARK_KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.p12
+        run: |
+          for name in KEYSTORE_BASE64 DAYMARK_KEYSTORE_PASSWORD DAYMARK_KEY_ALIAS DAYMARK_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Android signing secret: $name. See docs/ci-publishing.md."
+              exit 1
+            fi
+          done
+          umask 077
+          trap 'rm -f "$DAYMARK_KEYSTORE_PATH"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$DAYMARK_KEYSTORE_PATH"
+          bash gradlew :app:assembleRelease --console=plain --max-workers=2 --no-daemon
+      - name: Verify and stage APK
+        run: |
+          apk=apps/android/app/build/outputs/apk/release/app-release.apk
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$tools/apksigner" verify --verbose "$apk"
+          badging="$("$tools/aapt2" dump badging "$apk")"
+          expected="package: name='com.everyonesoftware.daymark' versionCode='$DAYMARK_VERSION' versionName='$DAYMARK_VERSION'"
+          [[ "$badging" == "$expected"* ]]
+          if grep -q '^application-debuggable' <<< "$badging"; then
+            echo '::error::Release APK must not be debuggable.'
+            exit 1
+          fi
+          mkdir -p dist/android
+          cp "$apk" "dist/android/Tasks-$DAYMARK_VERSION.apk"
+          sha256sum "dist/android/Tasks-$DAYMARK_VERSION.apk" > dist/android/SHA256SUMS
+          echo "Signed Android version/build: $DAYMARK_VERSION ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload signed Android APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Tasks-android-${{ needs.validate.outputs.version }}
+          path: dist/android/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/daymark-release.p12"

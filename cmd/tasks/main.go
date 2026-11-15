@@ -41,7 +41,7 @@ func parseArgs(args []string) (options, error) {
 	default:
 		return cfg, errors.New("unknown action")
 	}
-	flags := flag.NewFlagSet("daymark", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tasks", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&cfg.host, "host", "127.0.0.1", "Bind address")
 	flags.IntVar(&cfg.port, "port", 8787, "TCP port (0 selects an ephemeral port)")
@@ -131,7 +131,7 @@ func checkHealth(url, ca string, connectAddress ...string) error {
 func run(args []string, in io.Reader, out, stderr io.Writer) int {
 	cfg, err := parseArgs(args)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(out, "Daymark private Go server\nUsage: daymark [serve|create-user|reset-password|adopt-legacy|healthcheck] [flags]\n--host --port --db --web-root --allowed-host --public-origin --tls-cert --tls-key\n--username --password-stdin --allow-insecure-http\nHealthcheck: --url --ca --connect-address")
+		fmt.Fprintln(out, "Tasks private Go server\nUsage: tasks [serve|create-user|reset-password|adopt-legacy|healthcheck] [flags]\n--host --port --db --web-root --allowed-host --public-origin --tls-cert --tls-key\n--username --password-stdin --allow-insecure-http\nHealthcheck: --url --ca --connect-address")
 		return 0
 	}
 	if err != nil {
@@ -162,7 +162,7 @@ func run(args []string, in io.Reader, out, stderr io.Writer) int {
 	}
 	store, err := server.Open(cfg.db)
 	if err != nil {
-		fmt.Fprintln(stderr, "Unable to open Daymark database; check permissions.")
+		fmt.Fprintln(stderr, "Unable to open Tasks database; check permissions.")
 		return 1
 	}
 	defer store.Close()

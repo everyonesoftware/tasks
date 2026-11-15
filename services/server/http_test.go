@@ -286,7 +286,7 @@ func TestHTTPScopedCRUDAndExport(t *testing.T) {
 		t.Fatalf("archive %d %s", w.Code, w.Body)
 	}
 	w = httpRequest(t, h, "GET", "/api/export", "", token)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"archived":1`) || !strings.Contains(w.Header().Get("Content-Disposition"), "daymark-backup.json") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"archived":1`) || !strings.Contains(w.Header().Get("Content-Disposition"), "tasks-backup.json") {
 		t.Fatalf("export %d %s", w.Code, w.Body)
 	}
 }
@@ -355,7 +355,7 @@ func httpRequest(t *testing.T, h http.Handler, method, path, body, token string)
 func TestHTTPAuthenticationLifecycle(t *testing.T) {
 	_, h := newHTTPFixture(t, Config{})
 	w := httpRequest(t, h, "GET", "/health", "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"0.2.0"`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"version":"`+Version+`"`) {
 		t.Fatalf("health %d %s", w.Code, w.Body)
 	}
 	for _, path := range []string{"/api/state", "/api/export", "/api/auth/session", "/api/missing"} {

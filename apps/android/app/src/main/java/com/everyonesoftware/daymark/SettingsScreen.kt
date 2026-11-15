@@ -10,11 +10,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
-@Composable fun DaymarkApp(state: UiState,actions: Actions) {
+@Composable fun TasksApp(state: UiState,actions: Actions) {
  if(state.session==null) {
   Surface(Modifier.fillMaxSize()) {
    Column(Modifier.safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-    Text("daymark",style=MaterialTheme.typography.headlineLarge)
+    Text("Tasks",style=MaterialTheme.typography.headlineLarge)
     Text("Connect your server.",style=MaterialTheme.typography.headlineLarge)
     Text("Sign in to the server where your tasks live.")
     CredentialForm(null,state.busy,state.notice,"Sign in",{url,user,password -> actions.onLogin(url,user,password,false) })
@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
     Text("Tasks stay on your server. This device keeps only the connection and a secure sign-in session.")
    }
   }
- } else if(state.settings) SettingsScreen(state,actions) else DaymarkScreen(state,actions)
+ } else if(state.settings) SettingsScreen(state,actions) else TasksScreen(state,actions)
 }
 @Composable private fun CredentialForm(session: Session?,busy: Boolean,error: String?,submit: String,onSubmit: (String,String,String)->Unit) {
  var url by remember { mutableStateOf(session?.endpoint.orEmpty()) }

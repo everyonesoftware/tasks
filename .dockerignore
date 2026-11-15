@@ -3,8 +3,8 @@
 !go.mod
 !go.sum
 !cmd/
-!cmd/daymark/
-!cmd/daymark/*.go
+!cmd/tasks/
+!cmd/tasks/*.go
 !services/
 !services/server/
 !services/server/*.go

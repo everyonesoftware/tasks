@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#202b30">
-<title>Daymark</title>
+<title>Tasks</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/styles.css">
@@ -13,10 +13,10 @@
 <body>
 <a class="skip-link" href="#content">Skip to tasks</a>
 <div class="shell">
-<aside class="sidebar"><a class="brand" href="/" aria-label="Daymark home"><span class="brand-mark" aria-hidden="true">◴</span>daymark</a><nav aria-label="Main navigation" id="navigation"></nav></aside>
+<aside class="sidebar"><a class="brand" href="/" aria-label="Tasks home"><span class="brand-mark" aria-hidden="true">◴</span>Tasks</a><nav aria-label="Main navigation" id="navigation"></nav></aside>
 <main class="workspace" id="content" tabindex="-1">
 <header class="app-top"><span class="eyebrow">Your personal space</span><button id="add-task" class="add-task" disabled><span aria-hidden="true">+</span> Add task</button></header>
-<div id="connection" role="status" class="connection">Connecting to Daymark…</div>
+<div id="connection" role="status" class="connection">Connecting to Tasks…</div>
 <div id="notice" role="status" class="notice" hidden></div>
 <section id="view" aria-busy="true"><h1>One thing at a time.</h1><p class="muted">Loading your tasks…</p></section>
 </main>
@@ -34,6 +34,6 @@
 </form>
 </dialog>
 <dialog id="archive-dialog" aria-labelledby="archive-dialog-title"><h2 id="archive-dialog-title">Archive task?</h2><p id="archive-copy"></p><p class="muted">This removes the task from your active lists and keeps its completion history. There is no restore in this version.</p><p id="archive-error" class="error" role="alert" hidden></p><footer><button type="button" data-close="archive-dialog" autofocus>Cancel</button><button type="button" class="danger" id="confirm-archive">Archive task</button></footer></dialog>
-<noscript><p class="error">Daymark needs JavaScript enabled to load and manage your tasks.</p></noscript>
+<noscript><p class="error">Tasks needs JavaScript enabled to load and manage your tasks.</p></noscript>
 </body>
 </html>

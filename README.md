@@ -1,6 +1,8 @@
-# Daymark
+# Tasks
 
 A personal task app for web and native Android, using the approved **Focus + queue** design: one Current task, a daily progress bar, and a queue of what is still due.
+
+Tasks is the new product name for Daymark, not a new installation identity. Existing databases, Android app ID/signing identity, sessions and `DAYMARK_*` configuration names stay unchanged; see [Rebranding and compatibility](docs/rebranding.md).
 
 ## Scope
 
@@ -25,15 +27,15 @@ A new database has no sample tasks and no default username or password. Server a
 Go 1.26.11+; SQLite uses the pure-Go `modernc.org/sqlite` driver. No Python runtime, CGO, or system SQLite library is required. Build from the repository root:
 
 ```sh
-CGO_ENABLED=0 go build -o bin/daymark ./cmd/daymark
+CGO_ENABLED=0 go build -o bin/tasks ./cmd/tasks
 ```
 
-The examples below use that binary; `go run ./cmd/daymark` accepts the same subcommands and flags for development.
+The examples below use that binary; `go run ./cmd/tasks` accepts the same subcommands and flags for development.
 
 From this directory, provision an account in the persistent server database:
 
 ```sh
-./bin/daymark create-user --db .data/daymark.sqlite3 --username dan
+./bin/tasks create-user --db .data/daymark.sqlite3 --username dan
 ```
 
 Enter the password directly at the hidden terminal prompt. Do not put passwords in chat, command-line literals, source files, or Git. Automation/tests can use `--password-stdin` with an appropriate secret source. Account provisioning, resetting passwords, or adopting legacy unowned tasks is an explicit administrator operation; see `services/server/README.md` for exact options.
@@ -47,7 +49,7 @@ for certificate setup, account provisioning, startup, and backups.
 Use a certificate trusted by the clients, either directly:
 
 ```sh
-./bin/daymark serve --host 0.0.0.0 --port 8787 \
+./bin/tasks serve --host 0.0.0.0 --port 8787 \
   --db .data/daymark.sqlite3 \
   --tls-cert /path/to/fullchain.pem --tls-key /path/to/private-key.pem
 ```
@@ -65,7 +67,7 @@ This is a deployment target, not a claim that a trusted certificate or reverse p
 ### Local development
 
 ```sh
-./bin/daymark serve --host 127.0.0.1 --port 8787 --db .data/daymark.sqlite3
+./bin/tasks serve --host 127.0.0.1 --port 8787 --db .data/daymark.sqlite3
 ```
 
 HTTP sign-in is allowed on loopback for development. A separate `--allow-insecure-http` option explicitly permits the existing encrypted-tailnet development setup; it is not suitable for plain/public Internet credential transport. Native release builds default to HTTPS. Any debug-only tailnet HTTP exception is visibly warned about, not silently enabled.
@@ -100,7 +102,7 @@ The updater reads actual releases from `everyonesoftware/tasks`; a new release m
 
 - `apps/web/`: dependency-free responsive browser UI.
 - `apps/android/`: native Android application.
-- `cmd/daymark/`: Go CLI and server entry point.
+- `cmd/tasks/`: Go CLI and server entry point.
 - `services/server/`: Go authentication, HTTP API, scheduling, SQLite.
 - `contracts/api.md`: task API and recurrence semantics.
 - `contracts/auth-and-updates.md`: authoritative authenticated connection and updater behavior; supersedes the old no-auth/cache assumptions.

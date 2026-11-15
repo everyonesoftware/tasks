@@ -23,11 +23,11 @@ func TestDockerBuildsStandaloneNonRootGoRuntime(t *testing.T) {
 	dockerfile := rootFile(t, "Dockerfile")
 	for _, required := range []string{
 		"FROM golang:1.26.11-bookworm AS build",
-		"CGO_ENABLED=0", "go build", "./cmd/daymark",
-		"FROM debian:bookworm-slim", "COPY --from=build /out/daymark /app/daymark",
+		"CGO_ENABLED=0", "go build", "./cmd/tasks",
+		"FROM debian:bookworm-slim", "COPY --from=build /out/tasks /app/tasks",
 		"COPY apps/web/ ./apps/web/", "USER 10001:10001",
 		"chown 10001:10001 /data", "chmod 0700 /data",
-		`ENTRYPOINT ["/app/daymark"]`,
+		`ENTRYPOINT ["/app/tasks"]`,
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile missing %q", required)
@@ -44,7 +44,7 @@ func TestDockerBuildsStandaloneNonRootGoRuntime(t *testing.T) {
 func TestComposeUsesGoHealthcheckAndKeepsVolumeIdentity(t *testing.T) {
 	config := rootFile(t, "docker-compose.yml")
 	for _, required := range []string{
-		"        - /app/daymark\n        - healthcheck\n        - --ca\n        - /certs/fullchain.pem\n        - --connect-address\n        - 127.0.0.1:8787",
+		"        - /app/tasks\n        - healthcheck\n        - --ca\n        - /certs/fullchain.pem\n        - --connect-address\n        - 127.0.0.1:8787",
 		"    read_only: true", "      - ALL", "      - no-new-privileges:true",
 		"        source: tasks-data", "        target: /data", "        target: /certs",
 		"        read_only: true", "          create_host_path: false",
@@ -110,7 +110,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	if !service.ReadOnly {
 		t.Error("root filesystem must be read-only")
 	}
-	want := []string{"CMD", "/app/daymark", "healthcheck", "--ca", "/certs/fullchain.pem", "--connect-address", "127.0.0.1:8787"}
+	want := []string{"CMD", "/app/tasks", "healthcheck", "--ca", "/certs/fullchain.pem", "--connect-address", "127.0.0.1:8787"}
 	if !reflect.DeepEqual(service.Healthcheck.Test, want) {
 		t.Errorf("healthcheck = %q, want %q", service.Healthcheck.Test, want)
 	}

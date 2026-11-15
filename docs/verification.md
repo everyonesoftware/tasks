@@ -1,8 +1,49 @@
-# Go server migration verification — 2026-11-15
+# Authorized Android signing setup — 2026-11-15
+
+- Reused the pre-existing production key; no key rotation or new signing identity. Verified alias `daymark` is a private-key entry, protected directory/file modes are 0700/0600, and its certificate is valid through 2054-04-01.
+- Built the current Tasks release with that actual key. `:app:assembleRelease` passed; `apksigner` verified the APK and its certificate matched the existing keystore SHA256 `ef821ed3bfe07fb774f2708edcb300248d5b8f86f9d4765bfa0f31d0b2db47e4`. Actual APK metadata: label `Tasks`, package `com.everyonesoftware.daymark`, versionName/versionCode `2`, non-debuggable. Artifact: `apps/android/app/build/outputs/apk/release/app-release.apk`.
+- Uploaded the four required repository Actions secrets to `everyonesoftware/tasks`: `DAYMARK_KEYSTORE_BASE64`, `DAYMARK_KEYSTORE_PASSWORD`, `DAYMARK_KEY_ALIAS`, `DAYMARK_KEY_PASSWORD`. Each exact secret endpoint was read back and its name/update timestamp verified after upload. GitHub does not expose plaintext secret values for read-back. Key/password values were supplied through private process environments or stdin, never command-line literals, output, chat or repository files.
+- No commit/push, workflow dispatch, APK installation, GHCR publication or GitHub Release was performed. Remote workflow execution with these secrets remains unverified until the pending workflow is pushed and run. Back up the existing local signing key/password securely; GitHub secrets are not a retrievable backup.
+
+---
+
+# Tasks rebranding verification — 2026-11-15
+
+The current product name is **Tasks**. Active CLI examples use `bin/tasks`, `cmd/tasks` and `/app/tasks`; new APK/artifact examples use `Tasks-`. See `rebranding.md` for unchanged installation, signing, configuration and storage identifiers. No source commit/push, publication, live database change, signing-key access or device install was performed for the rebrand.
+
+- Branding/compatibility regressions were verified RED/GREEN for CLI help and unchanged DB default, export filename, container/artifact naming, web shell/PWA, Android labels/symbols, and release packaging/schema. The existing release packager now accepts the integer commit-count version and emits `Tasks-` APK filenames while retaining `daymark-release.json` and the original Android package ID. The schema also accepts historical APK prefixes.
+- `go test -race ./...`, `go vet ./...`, actionlint and `git diff --check` passed. Built the real CGO-free `bin/tasks` with commit-count version `2`; its help identifies Tasks and the new executable name. Independent backend/deployment review found stale server README paths; corrected and rechecked them.
+- All 23 web Node tests passed. Real isolated Go API/Chromium acceptance passed with Tasks title, accessible wordmark and sign-in copy; About/server version agreement; task mutation read-back; account isolation; no persistent task/credential data; 320/390/1440px layouts; and offline sign-out. Evidence: `/opt/data/cache/scratch/daymark-go-acceptance-fklPs0/`. The screenshot visibly retains the dark slate/mint Focus + queue layout with the Tasks wordmark.
+- Final Android unit tests, debug APK, instrumentation-test APK assembly and lint passed. XML read-back confirmed 37 tests, zero failures/errors/skips. Actual final APK metadata confirmed label `Tasks`, unchanged package `com.everyonesoftware.daymark`, versionName `2`, versionCode `2`. Parent validation caught and corrected an unintended updater metadata filename rename; the legacy-asset regression failed before the correction and passed in the final full Android run.
+- Five existing release-packaging tests and three absent/partial release-signing refusal tests passed. Rebranded Android production signing, device instrumentation/install, Docker runtime and remote GitHub publication were not exercised. The Docker daemon remains unavailable. Earlier signed/device evidence below predates the rebrand.
+
+The records below predate the rebrand. Their original Daymark artifact names, binary names, paths, versions and execution results are retained as historical evidence, not claims about the current Tasks build.
+
+---
+
+# Historical CI publishing and commit-count versions — 2026-11-15
+
+No source commit/push, GHCR publication, GitHub Release, signing-secret upload, live database change or device install was performed.
+
+- Workflow actionlint validation passed. New regression tests were verified RED before implementation, then GREEN. The version helper was exercised against merged Git history (all five reachable commits counted) and rejected a shallow clone.
+- `go test -race ./...`, `go test ./...` and `go vet ./...` passed. A separate linker-injected test run passed with the real commit count. An actual CGO-free server binary with an isolated scratch database returned `{"status":"ok","version":"2"}` from `/health`.
+- All 21 web Node tests passed, including actual-version/error handling. Real isolated API/Chromium acceptance passed, including About matching `/health`, authentication, task mutation read-back, account isolation, no persistent task/credential data, responsive layouts and offline sign-out. Evidence: `/opt/data/cache/scratch/daymark-go-acceptance-DBziyJ/`.
+- Android unit tests, debug APK, instrumentation-test APK assembly and lint passed. Unit XML read-back confirmed 37 tests, zero failures/errors/skips. Actual debug APK metadata confirmed package `com.everyonesoftware.daymark`, versionName `2`, versionCode `2`. Runtime configuration probes covered full-history fallback, explicit CI override, valid bounds, invalid values and shallow-history handling.
+- The signed release path was exercised using a **disposable test key only**, no production signing material. `:app:assembleRelease` passed with `DAYMARK_VERSION=137`; `apksigner` and `aapt2` verified a signed, non-debuggable APK with the expected package and versionName/versionCode `137`. This is not a production artifact and was not published or installed. The test keystore was removed and the test APK moved outside normal release output to `/opt/data/cache/scratch/daymark-ci-signing-fixture-IKeFKf/Daymark-test-key-only-137.apk`.
+- The existing independent release-packaging suite remains unchanged: five tests passed. All three missing/partial release-signing refusal checks also passed.
+- Independent review found that an older workflow rerun could roll `latest` backwards despite serialization. The correction gates `latest` on the current remote `main` SHA while preserving numbered tags. A real local Git regression test was verified RED/GREEN for current-head promotion, old-run replay, and lookup failure. Final race/vet, shell syntax and actionlint checks passed after the correction.
+- Docker build/runtime remains **unverified**: the installed Docker CLI has no reachable daemon; rendered Compose integration skipped because the Compose plugin is unavailable. Local binary/static deployment checks do not substitute for a Docker build.
+- The repository currently has no configured Actions secrets. Production Android CI needs the four documented signing secrets before it can complete. No remote workflow run or GHCR permission/public-pull behavior was exercised because these changes have not been pushed.
+
+See `ci-publishing.md` for workflow triggers, image tags, APK artifact policy, version semantics and setup prerequisites. Earlier migration/device/signing evidence below predates these version changes.
+
+---
+
+# Historical Go server migration verification — 2026-11-15
 
 The Python backend, backend tests and Python browser runners have been replaced by Go and a self-contained Node/Chromium acceptance runner. The HTML/CSS/JS UI and native Android client are unchanged. No live database, user account, personal device, commit, push or release was changed.
 
-## Current migration gates
+## Migration gates at that verification
 
 | Gate | Actual result |
 |---|---|

@@ -44,7 +44,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - /app/daymark
+        - /app/tasks
         - healthcheck
         - --ca
         - /certs/fullchain.pem

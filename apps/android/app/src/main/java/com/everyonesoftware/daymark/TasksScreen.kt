@@ -35,7 +35,7 @@ private val Muted = Color(0xFFA4B4B4)
 private val Focus = Color(0xFF30453E)
 private val Ink = Color(0xFFEDF2ED)
 
-@Composable fun DaymarkTheme(content: @Composable () -> Unit) {
+@Composable fun TasksTheme(content: @Composable () -> Unit) {
  MaterialTheme(
   colorScheme=darkColorScheme(primary=Mint, onPrimary=Color(0xFF1F392B), background=Slate, onBackground=Ink, surface=Panel, onSurface=Ink, surfaceVariant=Color(0xFF344B41), onSurfaceVariant=Muted, outline=Color(0xFF647579)),
   typography=Typography(
@@ -59,7 +59,7 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
  else -> repeat
 }
 
-@Composable fun DaymarkScreen(state: UiState, actions: Actions) {
+@Composable fun TasksScreen(state: UiState, actions: Actions) {
  var page by rememberSaveable { mutableStateOf("Today") }
  var formOpen by rememberSaveable { mutableStateOf(false) }
  var editing by remember { mutableStateOf<Task?>(null) }
@@ -83,7 +83,7 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
   LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding=PaddingValues(start=22.dp, end=22.dp, top=12.dp, bottom=28.dp), verticalArrangement=Arrangement.spacedBy(20.dp)) {
    item {
     Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-     Text("daymark", fontFamily=FontFamily.Serif, fontSize=28.sp, modifier=Modifier.weight(1f))
+     Text("Tasks", fontFamily=FontFamily.Serif, fontSize=28.sp, modifier=Modifier.weight(1f))
      TextButton(onClick=actions.onSettings, enabled=!state.busy) { Text("Settings", fontSize=16.sp) }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) {
@@ -93,7 +93,7 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
    if(state.busy) item {
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
      LinearProgressIndicator(Modifier.fillMaxWidth())
-     Text(if(data==null) "Loading Daymark…" else "Syncing…", style=MaterialTheme.typography.bodySmall, color=Muted)
+     Text(if(data==null) "Loading Tasks…" else "Syncing…", style=MaterialTheme.typography.bodySmall, color=Muted)
     }
    }
    if(!state.snapshot.online || state.snapshot.error != null || (data != null && data.date != LocalDate.now().toString())) item {
@@ -101,7 +101,7 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
      Column(Modifier.padding(16.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
       Text(state.snapshot.error ?: if(data==null) "Not connected" else "Connection required", color=Mint)
       if(data!=null) Text("Refresh to enable changes.", style=MaterialTheme.typography.bodySmall, color=Muted)
-      else Text("Connect to your Daymark server to load your tasks.", style=MaterialTheme.typography.bodySmall, color=Muted)
+      else Text("Connect to your Tasks server to load your tasks.", style=MaterialTheme.typography.bodySmall, color=Muted)
       TextButton(onClick=actions.onRefresh, enabled=!state.busy) { Text("Refresh", fontSize=16.sp) }
      }
     }

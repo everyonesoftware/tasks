@@ -41,7 +41,7 @@ class ReleaseManifestTests(unittest.TestCase):
             badging = "package: name='com.everyonesoftware.daymark' versionCode='2' versionName='0.2.0'\nsdkVersion:'26'\n"
             out = Path(root) / 'out'
             result = tool.build_release(apk, badging, out)
-            self.assertEqual(result['apkAssetName'], 'Daymark-0.2.0-2.apk')
+            self.assertEqual(result['apkAssetName'], 'Tasks-0.2.0-2.apk')
             self.assertEqual(result['sha256'], hashlib.sha256(apk.read_bytes()).hexdigest())
             self.assertEqual((out / result['apkAssetName']).read_bytes(), apk.read_bytes())
             self.assertEqual(json.loads((out / 'daymark-release.json').read_text()), result)

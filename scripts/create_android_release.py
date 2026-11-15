@@ -9,10 +9,10 @@ def parse_badging(text):
     if not package or not sdk:
         raise ValueError('APK package/version/minimum SDK could not be read')
     if package[1] != 'com.everyonesoftware.daymark':
-        raise ValueError('Only the Daymark Android package can be published')
+        raise ValueError('Only the Tasks Android package can be published')
     if not 1 <= int(package[2]) <= 2_100_000_000:
         raise ValueError('Invalid Android version code')
-    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?', package[3]):
+    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,3}(?:[-+][A-Za-z0-9.-]+)?', package[3]):
         raise ValueError('Version name is not a safe release identifier')
     if not 1 <= int(sdk[1]) <= 1000:
         raise ValueError('Invalid minimum Android SDK')
@@ -27,7 +27,7 @@ def build_release(apk, badging, out):
     import shutil
     info = parse_badging(badging)
     apk, out = Path(apk), Path(out)
-    name = f"Daymark-{info['versionName']}-{info['versionCode']}.apk"
+    name = f"Tasks-{info['versionName']}-{info['versionCode']}.apk"
     with apk.open('rb') as handle:
         checksum = hashlib.file_digest(handle, 'sha256').hexdigest()
     manifest = {'schemaVersion': 1, **info, 'apkAssetName': name, 'sha256': checksum}

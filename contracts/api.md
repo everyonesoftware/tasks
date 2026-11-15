@@ -1,4 +1,6 @@
-# Daymark v0.1 API contract
+# Tasks task API contract (Daymark v0.1 origin)
+
+The task models and recurrence rules below remain the base contract for Tasks. The original v0.1 deployment, authentication, default-connection and persistent-cache assumptions are historical and superseded by `auth-and-updates.md`. The mockup filename is a historical design reference, not current product branding. See `docs/rebranding.md` for preserved compatibility identifiers.
 
 Private, single-user application intended for a trusted Tailscale network. No multi-user accounts or public Internet deployment in v0.1. Never expose on an untrusted network without adding authentication and HTTPS. UI is the approved Focus + queue design, not the comparison board.
 

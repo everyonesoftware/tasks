@@ -69,7 +69,7 @@ func TestHelpDoesNotCreateDatabase(t *testing.T) {
 	if code := run([]string{"--help"}, strings.NewReader(""), &out, &stderr); code != 0 {
 		t.Fatalf("help exit=%d %s", code, stderr.String())
 	}
-	if !strings.Contains(out.String(), "Daymark") {
+	if !strings.Contains(out.String(), "Tasks") {
 		t.Fatal("help missing application name")
 	}
 }

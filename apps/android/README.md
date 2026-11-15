@@ -1,6 +1,6 @@
-# Daymark Android
+# Tasks Android
 
-Native Kotlin / Jetpack Compose. Package `com.everyonesoftware.daymark`; **0.2.0, build 2**. Minimum API 26, target/compile API 36.
+Native Kotlin / Jetpack Compose. Package `com.everyonesoftware.daymark` is retained for upgrade compatibility. Version name/build use the full Git commit count (or CI-provided `DAYMARK_VERSION`). Minimum API 26, target/compile API 36.
 
 ## Build and verification
 
@@ -33,7 +33,7 @@ Use HTTPS by default. Localhost, 127.0.0.1 and emulator-host 10.0.2.2 support lo
 
 ## Settings and updates
 
-Connection and App updates panels preserve the Focus + queue UI and readable phone type. Installed version/build comes from PackageManager, refreshed on resume. Updates use only the public `everyonesoftware/tasks` latest-stable release and actual `daymark-release.json` asset. No GitHub credentials and no backend session sharing. No release, failed check, current and newer states are distinct. Checking at launch is optional; download and installation are always explicit actions. Review shows the actual release notes and installed/available builds.
+Connection and App updates panels preserve the Focus + queue UI and readable phone type. Installed version/build comes from PackageManager, refreshed on resume. Updates use only the public `everyonesoftware/tasks` latest-stable release and actual `daymark-release.json` asset, whose legacy filename is preserved for compatibility. No GitHub credentials and no backend session sharing. No release, failed check, current and newer states are distinct. Checking at launch is optional; download and installation are always explicit actions. Review shows the actual release notes and installed/available builds.
 
 Downloads run on IO with progress, cancellation, size/time limits and atomic staging in app-private `cache/updates`. Initial URLs are restricted to the expected repository/API paths; redirects are capped and restricted to official GitHub release asset hosts. The manifest, SHA256, package, exact newer version, compatible minSdk, and installed signing certificate are checked before offering installation and rechecked before opening the installer. Cancel/failure/sign-out removes staged APKs. FileProvider exposes only the updates cache directory. Android install-source permission and the system installer remain user-controlled; launching either is not claimed as successful installation.
 

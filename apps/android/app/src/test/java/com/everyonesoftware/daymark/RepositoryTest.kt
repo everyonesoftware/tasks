@@ -9,7 +9,7 @@ class RepositoryTest {
   val server = MockWebServer(); server.start()
   try {
    server.enqueue(MockResponse().setBody(FIXTURE))
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    repo.refresh("2026-11-14")
    assertEquals("Read", repo.snapshot.data?.today?.single()?.title)
    assertEquals("a@2026-11-14", repo.snapshot.data?.today?.single()?.occurrenceId)
@@ -23,8 +23,8 @@ class RepositoryTest {
   try {
    val store = MemoryStore()
    server.enqueue(MockResponse().setBody(FIXTURE))
-   DaymarkRepository(server.url("/").toString(), store).refresh("2026-11-14")
-   val restarted = DaymarkRepository(server.url("/").toString(), store)
+   TasksRepository(server.url("/").toString(), store).refresh("2026-11-14")
+   val restarted = TasksRepository(server.url("/").toString(), store)
    assertNull(restarted.snapshot.data)
    assertFalse(restarted.snapshot.online)
    server.enqueue(MockResponse().setResponseCode(503).setBody("{}"))
@@ -38,7 +38,7 @@ class RepositoryTest {
   val server = MockWebServer(); server.start()
   try {
    server.enqueue(MockResponse().setBody(FIXTURE))
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    repo.refresh("2026-11-14"); server.takeRequest()
    val body = org.json.JSONObject().put("taskId", "a").put("dueDate", "2026-11-14").put("date", "2026-11-14")
    server.enqueue(MockResponse().setResponseCode(500).setBody("{}"))
@@ -58,7 +58,7 @@ class RepositoryTest {
   val server = MockWebServer(); server.start()
   try {
    server.enqueue(MockResponse().setBody(FIXTURE))
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    repo.refresh("2026-11-14"); server.takeRequest()
    server.enqueue(MockResponse().setBody(FIXTURE))
    assertFalse(repo.write("POST", "/api/occurrences/complete", org.json.JSONObject(), "2026-11-15"))
@@ -75,7 +75,7 @@ class RepositoryTest {
  @Test fun taskCreateEditArchiveReadBackAuthoritativeState() = runBlocking {
   val server = MockWebServer(); server.start()
   try {
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    server.enqueue(MockResponse().setBody(FIXTURE)); repo.refresh("2026-11-14"); server.takeRequest()
    for ((method,path) in listOf("POST" to "/api/tasks", "PUT" to "/api/tasks/a", "DELETE" to "/api/tasks/a")) {
     server.enqueue(MockResponse().setResponseCode(if(method=="POST") 201 else if(method=="DELETE") 204 else 200).setBody(if(method=="DELETE") "" else "{}"))
@@ -92,19 +92,19 @@ class RepositoryTest {
   val server = MockWebServer(); server.start()
   try {
    val store = MemoryStore(); val url=server.url("/").toString()
-   val repo = DaymarkRepository(url, store)
+   val repo = TasksRepository(url, store)
    assertFalse(repo.write("POST", "/api/tasks", org.json.JSONObject(), "2026-11-14"))
    assertEquals(0, server.requestCount)
    server.enqueue(MockResponse().setBody(FIXTURE)); repo.refresh("2026-11-14")
    server.enqueue(MockResponse().setBody("{broken")); repo.refresh("2026-11-14")
    assertFalse(repo.snapshot.online)
-   assertNull(DaymarkRepository(url,store).snapshot.data)
+   assertNull(TasksRepository(url,store).snapshot.data)
   } finally { server.shutdown() }
  }
  @Test fun failedPostWriteRefreshDoesNotReportSuccess() = runBlocking {
   val server = MockWebServer(); server.start()
   try {
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    server.enqueue(MockResponse().setBody(FIXTURE)); repo.refresh("2026-11-14")
    server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
    server.enqueue(MockResponse().setResponseCode(500))
@@ -116,7 +116,7 @@ class RepositoryTest {
  @Test fun undoUsesContractRouteAndBody() = runBlocking {
   val server = MockWebServer(); server.start()
   try {
-   val repo = DaymarkRepository(server.url("/").toString(), MemoryStore())
+   val repo = TasksRepository(server.url("/").toString(), MemoryStore())
    server.enqueue(MockResponse().setBody(FIXTURE)); repo.refresh("2026-11-14"); server.takeRequest()
    server.enqueue(MockResponse().setBody(FIXTURE))
    val body=org.json.JSONObject().put("taskId","a").put("dueDate","2026-11-14").put("date","2026-11-14")

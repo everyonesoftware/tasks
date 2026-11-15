@@ -2,6 +2,12 @@ import {orderWaiting, deferOccurrence, readCachedState, canMutate, isCurrentRefr
 
 const $ = selector => document.querySelector(selector);
 import {createConnection} from './auth.mjs';
+import {fetchBuildVersion} from './version.mjs';
+let buildVersion = 'Checking…';
+fetchBuildVersion().then(version => {
+  buildVersion = version;
+  if (view === 'settings' && connection.session && !editingConnection && !checking) render();
+});
 let browserStorage;
 try { browserStorage = localStorage; } catch { /* Storage is never required. */ }
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -67,13 +73,13 @@ function render() {
   $('#connection').innerHTML = pending ? 'Saving changes…' : connected ? '' : `${esc(connectionMessage || 'Connection required. Tasks are only available while connected.')} <button id="retry" ${refreshing || authBusy ? 'disabled' : ''}>${refreshing ? 'Connecting…' : 'Retry connection'}</button>`;
   $('#view').setAttribute('aria-busy', String(pending || refreshing || authBusy));
   if (checking) {
-    $('#view').innerHTML = '<h1>Welcome to Daymark.</h1><p class="muted">Checking your session…</p>';
+    $('#view').innerHTML = '<h1>Welcome to Tasks.</h1><p class="muted">Checking your session…</p>';
   } else if (!connection.session || editingConnection) {
     renderSignIn();
   } else if (view === 'settings') {
     renderSettings();
   } else if (!state) {
-    $('#view').innerHTML = `<h1>One thing at a time.</h1><div class="empty"><h2>${refreshing ? 'Loading your tasks…' : 'Your tasks are out of reach.'}</h2><p class="muted">${refreshing ? 'Connecting to your Daymark server.' : 'Check your connection and retry. No tasks have been changed.'}</p></div>`;
+    $('#view').innerHTML = `<h1>One thing at a time.</h1><div class="empty"><h2>${refreshing ? 'Loading your tasks…' : 'Your tasks are out of reach.'}</h2><p class="muted">${refreshing ? 'Connecting to your Tasks server.' : 'Check your connection and retry. No tasks have been changed.'}</p></div>`;
   } else {
     loadOrder(state.date);
     if (view === 'today') renderToday();
@@ -93,12 +99,12 @@ function renderSignIn() {
     for (const control of $('#auth-form').querySelectorAll('button,input:not([readonly])')) control.disabled = authBusy;
     return;
   }
-  $('#view').innerHTML = `<h1>${editingConnection ? 'Edit connection.' : 'Welcome to Daymark.'}</h1><p class="page-sub">${editingConnection ? 'Re-enter your password to test and save this connection. Failed credentials leave your current session unchanged.' : 'Sign in to your server to see your tasks. Ask your server administrator for an account.'}</p><form id="auth-form" class="settings-panel"><h2>${editingConnection ? 'Connection details' : 'Sign in'}</h2><p id="auth-error" class="error" role="alert" hidden></p><label for="server-origin">Current server</label><input id="server-origin" readonly value="${esc(location.origin)}" aria-describedby="server-help"><p id="server-help" class="field-hint">This browser connects only to the server you opened. To use another server, open its address directly.</p><label for="username">Username</label><input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\\-]+" maxlength="64" required value="${esc(connection.session?.username || '')}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024"><p class="field-hint">Daymark never saves your password. Your browser may offer its own password manager.</p><footer>${editingConnection ? '<button type="button" id="cancel-connection">Cancel</button>' : ''}<button type="submit" class="primary">${editingConnection ? 'Test and save' : 'Sign in'}</button></footer></form>`;
+  $('#view').innerHTML = `<h1>${editingConnection ? 'Edit connection.' : 'Welcome to Tasks.'}</h1><p class="page-sub">${editingConnection ? 'Re-enter your password to test and save this connection. Failed credentials leave your current session unchanged.' : 'Sign in to your server to see your tasks. Ask your server administrator for an account.'}</p><form id="auth-form" class="settings-panel"><h2>${editingConnection ? 'Connection details' : 'Sign in'}</h2><p id="auth-error" class="error" role="alert" hidden></p><label for="server-origin">Current server</label><input id="server-origin" readonly value="${esc(location.origin)}" aria-describedby="server-help"><p id="server-help" class="field-hint">This browser connects only to the server you opened. To use another server, open its address directly.</p><label for="username">Username</label><input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\\-]+" maxlength="64" required value="${esc(connection.session?.username || '')}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024"><p class="field-hint">Tasks never saves your password. Your browser may offer its own password manager.</p><footer>${editingConnection ? '<button type="button" id="cancel-connection">Cancel</button>' : ''}<button type="submit" class="primary">${editingConnection ? 'Test and save' : 'Sign in'}</button></footer></form>`;
   setError('#auth-error',authError);
   for (const control of $('#auth-form').querySelectorAll('button,input:not([readonly])')) control.disabled = authBusy;
 }
 function renderSettings() {
-  $('#view').innerHTML = `<h1>Settings.</h1><p class="page-sub">Your connection and app.</p><section class="settings-panel" aria-labelledby="connection-heading"><h2 id="connection-heading">Connection</h2><dl><dt>Server</dt><dd>${esc(location.origin)}</dd><dt>Account</dt><dd>${esc(connection.session.username)}</dd><dt>Session</dt><dd>${connected ? 'Connected' : 'Connection required'}${connection.session.expiresAt ? ` · Expires ${esc(connection.session.expiresAt)}` : ''}</dd></dl><p class="muted">Tasks and history stay on your server. Nothing is available offline.</p><div class="settings-actions"><button id="edit-connection" ${authBusy || pending || refreshing ? 'disabled' : ''}>Edit connection</button><button id="test-session" ${authBusy || pending || refreshing ? 'disabled' : ''}>Test session</button><button id="sign-out" ${authBusy || pending ? 'disabled' : ''}>Sign out</button></div></section><section class="settings-panel" aria-labelledby="about-heading"><h2 id="about-heading">About</h2><p>Daymark web · Version 0.2.0</p><p class="muted">Android app updates are managed in the Android app. This browser cannot check your installed Android version or install updates.</p><a href="https://github.com/everyonesoftware/tasks/releases" target="_blank" rel="noopener noreferrer">Android releases on GitHub ↗</a></section>`;
+  $('#view').innerHTML = `<h1>Settings.</h1><p class="page-sub">Your connection and app.</p><section class="settings-panel" aria-labelledby="connection-heading"><h2 id="connection-heading">Connection</h2><dl><dt>Server</dt><dd>${esc(location.origin)}</dd><dt>Account</dt><dd>${esc(connection.session.username)}</dd><dt>Session</dt><dd>${connected ? 'Connected' : 'Connection required'}${connection.session.expiresAt ? ` · Expires ${esc(connection.session.expiresAt)}` : ''}</dd></dl><p class="muted">Tasks and history stay on your server. Nothing is available offline.</p><div class="settings-actions"><button id="edit-connection" ${authBusy || pending || refreshing ? 'disabled' : ''}>Edit connection</button><button id="test-session" ${authBusy || pending || refreshing ? 'disabled' : ''}>Test session</button><button id="sign-out" ${authBusy || pending ? 'disabled' : ''}>Sign out</button></div></section><section class="settings-panel" aria-labelledby="about-heading"><h2 id="about-heading">About</h2><p>Tasks web · Version ${esc(buildVersion)}</p><p class="muted">Android app updates are managed in the Android app. This browser cannot check your installed Android version or install updates.</p><a href="https://github.com/everyonesoftware/tasks/releases" target="_blank" rel="noopener noreferrer">Android releases on GitHub ↗</a></section>`;
 }
 function renderToday() {
   const waiting = orderWaiting(state.today, order), current = waiting[0];

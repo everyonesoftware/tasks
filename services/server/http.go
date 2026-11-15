@@ -308,7 +308,7 @@ func (h *httpHandler) dispatch(w http.ResponseWriter, r *http.Request) error {
 				if err != nil {
 					return err
 				}
-				w.Header().Set("Content-Disposition", `attachment; filename="daymark-backup.json"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="tasks-backup.json"`)
 				respondJSON(w, r, 200, data)
 				return nil
 			}
@@ -365,7 +365,7 @@ func (h *httpHandler) dispatch(w http.ResponseWriter, r *http.Request) error {
 	}
 	if r.Method == "GET" || r.Method == "HEAD" {
 		if path == "/health" {
-			respondJSON(w, r, 200, map[string]any{"status": "ok", "version": "0.2.0"})
+			respondJSON(w, r, 200, map[string]any{"status": "ok", "version": Version})
 			return nil
 		}
 		if path != "/api" && !strings.HasPrefix(path, "/api/") {

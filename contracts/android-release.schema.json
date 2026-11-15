@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Daymark Android release manifest",
+  "title": "Tasks Android release manifest",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "packageName", "versionName", "versionCode", "minSdk", "apkAssetName", "sha256"],
   "properties": {
     "schemaVersion": {"const": 1},
     "packageName": {"const": "com.everyonesoftware.daymark"},
-    "versionName": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?$"},
+    "versionName": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+){0,3}(?:[-+][A-Za-z0-9.-]+)?$"},
     "versionCode": {"type": "integer", "minimum": 1, "maximum": 2100000000},
     "minSdk": {"type": "integer", "minimum": 1, "maximum": 1000},
-    "apkAssetName": {"type": "string", "pattern": "^Daymark-[0-9][A-Za-z0-9.+-]*-[0-9]+\\.apk$"},
+    "apkAssetName": {"type": "string", "pattern": "^(?:Tasks|Daymark)-[0-9][A-Za-z0-9.+-]*-[0-9]+\\.apk$"},
     "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   }
 }

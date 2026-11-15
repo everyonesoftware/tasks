@@ -20,7 +20,7 @@ import (
 
 func serve(cfg options, out, stderr io.Writer) int {
 	fail := func() int {
-		fmt.Fprintln(stderr, "Unable to start Daymark; check transport settings, web root, bind address, port and database permissions.")
+		fmt.Fprintln(stderr, "Unable to start Tasks; check transport settings, web root, bind address, port and database permissions.")
 		return 1
 	}
 	config := server.Config{Host: cfg.host, Port: cfg.port, DB: cfg.db, WebRoot: cfg.webRoot, AllowedHosts: cfg.allowedHosts, PublicOrigin: cfg.publicOrigin, AllowInsecureHTTP: cfg.allowInsecureHTTP, TLSCert: cfg.tlsCert, TLSKey: cfg.tlsKey}
@@ -63,7 +63,7 @@ func serve(cfg options, out, stderr io.Writer) int {
 			httpServer.Close()
 		}
 	}()
-	fmt.Fprintf(out, "Daymark listening on %s://%s\n", scheme, listener.Addr().String())
+	fmt.Fprintf(out, "Tasks listening on %s://%s\n", scheme, listener.Addr().String())
 	if cfg.allowInsecureHTTP {
 		fmt.Fprintln(out, "WARNING: insecure HTTP development enabled; private encrypted tailnet only, never public Internet.")
 	}

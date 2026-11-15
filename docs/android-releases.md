@@ -1,6 +1,8 @@
-# Android signing and GitHub release assets
+# Tasks Android signing and GitHub release assets
 
 The app checks stable releases in `everyonesoftware/tasks`. A release is usable only when it contains both the signed Android APK and `daymark-release.json` matching `contracts/android-release.schema.json`.
+
+For the main-branch container/Android workflow, commit-count versioning and required GitHub Actions signing secrets, see `ci-publishing.md`. Workflow APK artifacts are not automatically published as updater releases. Version names and codes in the examples below describe the historical feature build, not the current commit-count build.
 
 The repository currently has no published releases. Do not substitute an illustrative mockup version or pretend a new release is available.
 
@@ -13,7 +15,9 @@ A persistent signing key was provisioned outside Git on this build host:
 /opt/data/state/daymark/signing/keystore-password
 ```
 
-The alias is `daymark`. The private directory is mode 0700 and both files are mode 0600. Do not print, commit, attach, or upload these files in a chat. Back them up securely outside the repository/container lifecycle. Losing the key prevents ordinary in-place updates of installations signed with it. The key is a local Android code-signing key, not a server TLS certificate.
+The alias is `daymark`. These paths, the signing identity and the `com.everyonesoftware.daymark` app ID are unchanged by the Tasks rebrand; see `rebranding.md`. The private directory is mode 0700 and both files are mode 0600. Do not print, commit, attach, or upload these files in a chat. Back them up securely outside the repository/container lifecycle. Losing the key prevents ordinary in-place updates of installations signed with it. The key is a local Android code-signing key, not a server TLS certificate.
+
+With explicit authorization, the existing key was verified and configured as repository Actions secrets in `everyonesoftware/tasks` on 2026-11-15: `DAYMARK_KEYSTORE_BASE64`, `DAYMARK_KEYSTORE_PASSWORD`, `DAYMARK_KEY_ALIAS`, and `DAYMARK_KEY_PASSWORD`. GitHub metadata read-back confirmed all four secrets exist; GitHub does not return their plaintext values. No replacement key was generated. The public signing-certificate SHA256 is `EF:82:1E:D3:BF:E0:7F:B7:74:F2:70:8E:DC:B3:00:24:8D:5B:8F:86:F9:D4:76:5B:FA:0F:31:D0:B2:DB:47:E4`.
 
 Gradle release signing uses these environment variables:
 
@@ -41,7 +45,7 @@ The tool reads package identity, version name/code, and minimum SDK using the An
 Output names follow this convention:
 
 ```text
-Daymark-0.2.0-2.apk
+Tasks-0.2.0-2.apk
 daymark-release.json
 ```
 

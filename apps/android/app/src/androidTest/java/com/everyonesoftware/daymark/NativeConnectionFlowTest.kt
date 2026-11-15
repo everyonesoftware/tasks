@@ -56,7 +56,7 @@ class NativeConnectionFlowTest {
   val endpoint="http://127.0.0.1:${socket.localPort}"
   val requests=CopyOnWriteArrayList<String>()
   @Volatile var expired=false
-  private val worker=thread(isDaemon=true,name="daymark-test-fixture") {
+  private val worker=thread(isDaemon=true,name="tasks-test-fixture") {
    while(!socket.isClosed) {try {socket.accept().use(::respond)} catch(_: Exception) {if(socket.isClosed) break} }
   }
   private fun respond(client: Socket) {

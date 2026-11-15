@@ -22,13 +22,13 @@ class Actions(
  val onSave: (Task?,TaskDraft,()->Unit)->Unit={_,_,_->},val onArchive: (Task,()->Unit)->Unit={_,_->},val onConnection: (String)->Unit={},
  val onLogin: (String,String,String,Boolean)->Unit={_,_,_,_->},val onSettings: ()->Unit={},val onTest: ()->Unit={},val onSignOut: ()->Unit={},val onCheckUpdates: ()->Unit={},val onDownload: ()->Unit={},val onCancelDownload: ()->Unit={},val onInstall: ()->Unit={},val onAutoCheck: (Boolean)->Unit={}
 )
-class DaymarkViewModel(application: Application): AndroidViewModel(application) {
+class TasksViewModel(application: Application): AndroidViewModel(application) {
  private val records=AndroidRecords(application)
  private val manager=ConnectionManager(ProtectedSessionVault(records,KeystoreTokenCipher()),AuthApi())
  private val packages=AndroidPackages(application)
  private val updater=UpdateService(GithubTransport(),android.os.Build.VERSION.SDK_INT)
  private val updateDir=File(application.cacheDir,"updates")
- private var repository: DaymarkRepository?=null
+ private var repository: TasksRepository?=null
  private var focus=FocusOrder()
  private var updateJob: Job?=null
  private var taskJob: Job?=null
@@ -36,7 +36,7 @@ class DaymarkViewModel(application: Application): AndroidViewModel(application) 
  val state=mutable.asStateFlow()
  init {
   updateDir.deleteRecursively()
-  manager.session?.let { if(validateBaseUrl(it.endpoint,BuildConfig.DEBUG)==null) manager.clear() else repository=DaymarkRepository(it.endpoint,MemoryStore(),it.token) }
+  manager.session?.let { if(validateBaseUrl(it.endpoint,BuildConfig.DEBUG)==null) manager.clear() else repository=TasksRepository(it.endpoint,MemoryStore(),it.token) }
   mutable.value=mutable.value.copy(session=manager.session)
   readInstalled()
   if(mutable.value.autoCheck) checkUpdates()
@@ -70,7 +70,7 @@ class DaymarkViewModel(application: Application): AndroidViewModel(application) 
    try {
     manager.connect(url,user,password,confirmed)
     discardDownload();focus=FocusOrder()
-    val session=manager.session!!;repository=DaymarkRepository(session.endpoint,MemoryStore(),session.token)
+    val session=manager.session!!;repository=TasksRepository(session.endpoint,MemoryStore(),session.token)
     mutable.value=mutable.value.copy(session=session,snapshot=Snapshot(),order=emptyList(),settings=false,notice=null)
     repository!!.refresh(LocalDate.now().toString());publish()
    } catch(e: Exception) { if(e is CancellationException) throw e;mutable.value=mutable.value.copy(busy=false,notice=e.message?.takeIf {e is AuthFailure} ?: "Could not authenticate this connection. Saved connection is unchanged.") }
@@ -81,7 +81,7 @@ class DaymarkViewModel(application: Application): AndroidViewModel(application) 
   mutable.value=mutable.value.copy(busy=true,notice=null)
   taskJob=viewModelScope.launch {
    try {manager.test();repository?.refresh(LocalDate.now().toString());publish();mutable.value=mutable.value.copy(notice=if(mutable.value.snapshot.online) "Connection verified." else "Connection required.")}
-   catch(e: Exception) {if(e is CancellationException) throw e;repository=null;focus=FocusOrder();if(e is AuthFailure && e.status==401) manager.clear();mutable.value=mutable.value.copy(session=manager.session,snapshot=Snapshot(),order=emptyList(),busy=false,notice=if(manager.session==null) "Your session expired. Sign in again." else "Connection required. Saved connection is unchanged.");manager.session?.let {repository=DaymarkRepository(it.endpoint,MemoryStore(),it.token)} }
+   catch(e: Exception) {if(e is CancellationException) throw e;repository=null;focus=FocusOrder();if(e is AuthFailure && e.status==401) manager.clear();mutable.value=mutable.value.copy(session=manager.session,snapshot=Snapshot(),order=emptyList(),busy=false,notice=if(manager.session==null) "Your session expired. Sign in again." else "Connection required. Saved connection is unchanged.");manager.session?.let {repository=TasksRepository(it.endpoint,MemoryStore(),it.token)} }
   }
  }
  private fun signOut() {
@@ -114,7 +114,7 @@ class DaymarkViewModel(application: Application): AndroidViewModel(application) 
  }
  private fun install() {
   if(mutable.value.update.status!=UpdateStatus.READY) return
-  val file=File(updateDir,"Daymark.apk");val manifest=mutable.value.update.release?.manifest ?: return
+  val file=File(updateDir,"Tasks.apk");val manifest=mutable.value.update.release?.manifest ?: return
   viewModelScope.launch {
    try {withContext(Dispatchers.IO) {val digest=java.security.MessageDigest.getInstance("SHA-256");file.inputStream().use {stream -> val buffer=ByteArray(16384);while(true) {val n=stream.read(buffer);if(n<0) break;digest.update(buffer,0,n)}};verifyApk(manifest,digest.digest().joinToString("") {"%02x".format(it)},packages.inspect(file),packages.installed())};packages.beginInstall(file)}
    catch(_: Exception) {updateDir.deleteRecursively();mutable.value=mutable.value.copy(update=UpdateState(UpdateStatus.FAILED,error="Installation could not be started safely."))}
@@ -124,12 +124,12 @@ class DaymarkViewModel(application: Application): AndroidViewModel(application) 
  private fun encode(value: String)=java.net.URLEncoder.encode(value,"UTF-8").replace("+","%20")
 }
 class MainActivity: ComponentActivity() {
- private lateinit var model: DaymarkViewModel
+ private lateinit var model: TasksViewModel
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
   enableEdgeToEdge(statusBarStyle=SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),navigationBarStyle=SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
-  model=ViewModelProvider(this)[DaymarkViewModel::class.java]
-  setContent {val state by model.state.collectAsStateWithLifecycle();DaymarkTheme {DaymarkApp(state,model.actions)}}
+  model=ViewModelProvider(this)[TasksViewModel::class.java]
+  setContent {val state by model.state.collectAsStateWithLifecycle();TasksTheme {TasksApp(state,model.actions)}}
   lifecycleScope.launch {repeatOnLifecycle(Lifecycle.State.STARTED) {while(true) {delay(30_000);model.refresh()}}}
  }
  override fun onResume() {super.onResume();if(::model.isInitialized) model.refresh()}

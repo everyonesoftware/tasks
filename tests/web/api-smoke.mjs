@@ -7,12 +7,12 @@ import {join, resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const root = await mkdtemp(join(tmpdir(), 'daymark-go-acceptance-'));
-const binary = join(root, 'daymark');
+const binary = join(root, 'tasks');
 const db = join(root, 'fixture.sqlite3');
 const password = 'acceptance-only-password'; // Public test credential, never a user DB.
 let apiProcess, chrome, socket;
 const checks = [];
-const build = spawnSync('go', ['build', '-o', binary, './cmd/daymark'], {cwd:resolve('.'), encoding:'utf8'});
+const build = spawnSync('go', ['build', '-o', binary, './cmd/tasks'], {cwd:resolve('.'), encoding:'utf8'});
 assert.equal(build.status, 0, build.stderr);
 for (const username of ['acceptance', 'second']) {
   const result = spawnSync(binary, ['create-user', '--db', db, '--username', username, '--password-stdin'], {input:password+'\n', encoding:'utf8'});
@@ -79,6 +79,10 @@ try {
     await js(`document.querySelector('#username').value=${JSON.stringify(username)};document.querySelector('#password').value=${JSON.stringify(passphrase)};document.querySelector('#auth-form').requestSubmit()`);
   }
   await cdp('Network.enable');await navigate();
+  assert.equal(await js('document.title'), 'Tasks');
+  assert.equal(await js("document.querySelector('.brand').getAttribute('aria-label')"), 'Tasks home');
+  assert.ok(await js("document.querySelector('#view').textContent.includes('Welcome to Tasks.')"));
+  checks.push('Tasks title, accessible brand and sign-in copy');
   assert.ok(await js("document.querySelector('#password').value==='' && document.querySelector('#server-origin').readOnly"));
   checks.push('first-login and current origin');
   await login('acceptance');await wait("!!document.querySelector('[data-complete]')");
@@ -92,7 +96,11 @@ try {
   await js("document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
   assert.equal((await api('/api/state',undefined,token)).progress.completed,0);
   checks.push('completion and undo independently read back');
-  await js("document.querySelector('[data-view=settings]').click();document.querySelector('#edit-connection').click();window.confirm=()=>true");
+  await js("document.querySelector('[data-view=settings]').click()");
+  const buildVersion=(await api('/health')).version;
+  await wait(`document.querySelector('[aria-labelledby=about-heading]').textContent.includes(${JSON.stringify('Tasks web · Version '+buildVersion)})`);
+  checks.push('web About reports the actual server build version');
+  await js("document.querySelector('#edit-connection').click();window.confirm=()=>true");
   await login('second','intentionally-wrong');await wait("document.querySelector('#auth-error')?.textContent.includes('Invalid')");
   assert.equal(await js("fetch('/api/auth/session').then(r=>r.json()).then(x=>x.username)"),'acceptance');
   await js("document.querySelector('#cancel-connection').click();document.querySelector('#edit-connection').click();window.confirmedSwitches=0;window.confirm=()=>{window.confirmedSwitches++;return true}");

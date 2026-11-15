@@ -17,7 +17,7 @@ fun parseState(raw: String): DayState {
  } } }
  return DayState(root.getString("date"), tasks(), occurrences("today"), occurrences("upcoming"), root.getJSONObject("progress").getInt("completed"), root.getJSONObject("progress").getInt("total"))
 }
-class DaymarkRepository(val baseUrl: String, private val store: Store, private val token: String = "") {
+class TasksRepository(val baseUrl: String, private val store: Store, private val token: String = "") {
  private val client = okhttp3.OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).readTimeout(12, java.util.concurrent.TimeUnit.SECONDS).followRedirects(false).build()
  var snapshot = Snapshot(); private set
  suspend fun write(method: String, path: String, body: org.json.JSONObject?, date: String): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

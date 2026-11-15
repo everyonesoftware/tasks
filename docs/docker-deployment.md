@@ -1,9 +1,10 @@
-# Deploy Tasks (Daymark) with Docker Compose
+# Deploy Tasks with Docker Compose
 
 Run commands from the repository root. This setup builds the Go API binary and
 web client into one image and serves them over **direct HTTPS** on port 8787.
 Android connects to the same HTTPS origin. It does not include Android builds or
-publish an image/release.
+publish an image/release. The Tasks rebrand preserves `DAYMARK_*` configuration
+names and existing database paths; see [Rebranding and compatibility](rebranding.md).
 
 ## 1. Configure HTTPS
 
@@ -91,7 +92,7 @@ docker compose build --pull
 docker compose up -d
 ```
 
-The health check runs `/app/daymark healthcheck --ca /certs/fullchain.pem --connect-address 127.0.0.1:8787`.
+The health check runs `/app/tasks healthcheck --ca /certs/fullchain.pem --connect-address 127.0.0.1:8787`.
 Its default URL is `https://$DAYMARK_HOST:8787/health`, independent of the published
 `DAYMARK_PORT`. The probe dials the container's loopback port 8787 while retaining
 `DAYMARK_HOST` for TLS SNI, certificate hostname verification, and the HTTP Host
@@ -99,8 +100,8 @@ header. It validates TLS trust and `/health` without requiring container DNS or
 hairpin routing to the published address. It does not prove an account exists or that external DNS/firewall
 access works. Check your actual external HTTPS address from your client too.
 The root filesystem is read-only; the database volume is writable. A multi-stage Go 1.26.11 build uses `CGO_ENABLED=0`; the non-root Debian slim runtime
-contains `/app/daymark`, `/app/apps/web`, and CA certificates, not Python or the Go
-toolchain. The build context must allow `go.mod`, `go.sum`, `cmd/daymark`, Go
+contains `/app/tasks`, `/app/apps/web`, and CA certificates, not Python or the Go
+toolchain. The build context must allow `go.mod`, `go.sum`, `cmd/tasks`, Go
 server sources, and web assets, but not the database, Android artifacts, repository
 metadata, or secrets.
 
@@ -116,7 +117,7 @@ go test ./tests/deployment -v
 go test ./...
 go vet ./...
 docker compose config --quiet
-docker build -t daymark:local .
+docker build -t tasks:local .
 ```
 
 The Go deployment tests check image/configuration invariants. When Compose is
