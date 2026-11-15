@@ -10,8 +10,10 @@ The following technical compatibility identifiers remain unchanged:
 - Android application ID/package: `com.everyonesoftware.daymark`.
 - Existing database locations, including `.data/daymark.sqlite3` and
   `/data/daymark.sqlite3`; existing task, account and history storage is retained.
-- All legacy `DAYMARK_*` environment variables and CI secrets remain supported
-  under the same names, including version, deployment and signing configuration.
+- Legacy `DAYMARK_*` environment variables and CI secrets retain their names,
+  including version, backend port and signing configuration, except that
+  `DAYMARK_HOST` has been renamed to `TASKS_HOST`. Update existing deployment
+  environment entries; the old hostname variable is no longer read.
 - `daymark_session` and existing cookie, preference, session and storage keys.
 - Updater metadata asset: `daymark-release.json`.
 - Existing production signing identity, including the external keystore path

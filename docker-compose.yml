@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     read_only: true
     environment:
-      DAYMARK_HOST: ${DAYMARK_HOST:?Set DAYMARK_HOST}
+      TASKS_HOST: ${TASKS_HOST:?Set TASKS_HOST}
     ports:
       - "127.0.0.1:${DAYMARK_PORT:-8787}:8787"
     volumes:

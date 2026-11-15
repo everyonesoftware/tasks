@@ -59,7 +59,7 @@ func TestComposeKeepsSecureDeploymentSettings(t *testing.T) {
 	for _, required := range []string{
 		"read_only: true",
 		"tasks-data:/data", "127.0.0.1:${DAYMARK_PORT:-8787}:8787",
-		"${DAYMARK_HOST:?", "  tasks-data:",
+		"TASKS_HOST: ${TASKS_HOST:?", "  tasks-data:",
 	} {
 		if !strings.Contains(config, required) {
 			t.Errorf("Compose missing %q", required)
@@ -89,7 +89,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 	}
 	cmd := exec.Command(command[0], append(command[1:], "-f", "docker-compose.yml", "config", "--format", "json")...)
 	cmd.Dir = filepath.Join("..", "..")
-	cmd.Env = append(os.Environ(), "DAYMARK_HOST=tasks.example.test", "DAYMARK_PORT=9443")
+	cmd.Env = append(os.Environ(), "TASKS_HOST=tasks.example.test", "DAYMARK_PORT=9443")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Compose config: %v", err)
@@ -121,7 +121,7 @@ func TestRenderedComposeSecurePersistentDeployment(t *testing.T) {
 		t.Error("root filesystem must be read-only")
 	}
 
-	if service.Environment["DAYMARK_HOST"] != "tasks.example.test" {
+	if service.Environment["TASKS_HOST"] != "tasks.example.test" {
 		t.Error("image must receive the HTTPS hostname")
 	}
 	if len(service.Command) != 0 {

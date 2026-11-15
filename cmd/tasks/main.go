@@ -55,7 +55,7 @@ func parseArgs(args []string) (options, error) {
 	flags.StringVar(&cfg.webRoot, "web-root", "apps/web", "Public web assets directory")
 	flags.StringVar(&cfg.ca, "ca", "", "Healthcheck trusted certificate PEM")
 	flags.StringVar(&cfg.connectAddress, "connect-address", "", "Healthcheck dial host:port override (preserves URL hostname for TLS verification)")
-	flags.StringVar(&cfg.url, "url", "https://"+net.JoinHostPort(os.Getenv("DAYMARK_HOST"), "8787")+"/health", "Healthcheck URL")
+	flags.StringVar(&cfg.url, "url", "https://"+net.JoinHostPort(os.Getenv("TASKS_HOST"), "8787")+"/health", "Healthcheck URL")
 	var allowed hosts
 	flags.Var(&allowed, "allowed-host", "Additional trusted hostname (repeatable)")
 	if err := flags.Parse(args); err != nil {

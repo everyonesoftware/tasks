@@ -32,10 +32,10 @@ func TestContainerEntrypointDefaultsAndOverrides(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("sh", append([]string{filepath.Join(dir, "entrypoint.sh")}, tc.args...)...)
-			cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "DAYMARK_HOST="+tc.hostname)
+			cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "DAYMARK_HOST=legacy.invalid", "TASKS_HOST="+tc.hostname)
 			out, err := cmd.CombinedOutput()
 			if tc.fail {
-				if err == nil || !strings.Contains(string(out), "DAYMARK_HOST") {
+				if err == nil || !strings.Contains(string(out), "TASKS_HOST") {
 					t.Fatalf("missing hostname must fail clearly: err=%v output=%s", err, out)
 				}
 				return

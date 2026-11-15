@@ -53,7 +53,8 @@ func TestHealthcheckConnectAddressPreservesTLSHostname(t *testing.T) {
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12}
 	srv.StartTLS()
 	defer srv.Close()
-	t.Setenv("DAYMARK_HOST", hostname)
+	t.Setenv("DAYMARK_HOST", "legacy.invalid")
+	t.Setenv("TASKS_HOST", hostname)
 	t.Setenv("DAYMARK_PORT", "9443")
 	var out, stderr bytes.Buffer
 	code := run([]string{"healthcheck", "--ca", ca, "--connect-address", srv.Listener.Addr().String()}, strings.NewReader(""), &out, &stderr)
@@ -75,7 +76,7 @@ func TestHealthcheckConnectAddressVerifiesCAAndURLHostname(t *testing.T) {
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12}
 	srv.StartTLS()
 	defer srv.Close()
-	t.Setenv("DAYMARK_HOST", "unused.invalid")
+	t.Setenv("TASKS_HOST", "unused.invalid")
 	for _, tc := range []struct {
 		name, hostname, ca string
 		override           bool

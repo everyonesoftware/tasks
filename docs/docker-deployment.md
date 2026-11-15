@@ -4,7 +4,8 @@ Run commands from the repository root. Compose builds the Go API and web client
 into one image, with an HTTP backend published **only on host loopback**.
 Tailscale Serve on the same host supplies HTTPS for web and Android clients.
 No certificate files or TLS settings are needed in the container. The Tasks
-rebrand preserves `DAYMARK_*` names and database paths; see
+rebrand preserves database paths and other legacy configuration names; the
+hostname variable is now `TASKS_HOST`. See
 [Rebranding and compatibility](rebranding.md).
 
 ## 1. Configure the hostname
@@ -13,14 +14,18 @@ Install Docker Engine, Docker Compose v2, and Tailscale on the deployment host.
 Create a local `.env` file (already excluded from Git):
 
 ```dotenv
-DAYMARK_HOST=hermesdan.tail1a7c8f.ts.net
+TASKS_HOST=hermesdan.tail1a7c8f.ts.net
 # Optional local backend port; this is NOT the public HTTPS port.
 # DAYMARK_PORT=8787
 ```
 
 Use the actual Tailscale HTTPS hostname of the Docker host, without a scheme,
 path, or port. Old `DAYMARK_CERT_DIR` and `DAYMARK_BIND_IP` settings are no longer
-used. The public origin is `https://$DAYMARK_HOST` on standard HTTPS port 443.
+used. The public origin is `https://$TASKS_HOST` on standard HTTPS port 443.
+Rename an existing `DAYMARK_HOST` entry to `TASKS_HOST`; the old name is no longer
+read. This sets the server's public HTTPS origin for Secure cookies and browser
+Origin/Referer validation, not its bind address or backend port. It does not
+configure DNS, certificates, or Tailscale Serve itself.
 
 ## 2. Build, provision, and start
 
@@ -43,7 +48,7 @@ Open `https://YOUR_TAILSCALE_HOST/`, then sign in. See the official
 [Tailscale Serve reference](https://tailscale.com/kb/1242/tailscale-serve).
 
 The image's `docker-entrypoint.sh` supplies the normal server arguments; Compose
-only passes `DAYMARK_HOST`. Explicit commands such as `create-user` still override
+only passes `TASKS_HOST`. Explicit commands such as `create-user` still override
 normal startup and do not require the hostname when invoking the image directly.
 The entrypoint uses the existing `--allow-insecure-http` opt-in for the
 local Docker bridge hop; `--public-origin` keeps session cookies Secure and browser

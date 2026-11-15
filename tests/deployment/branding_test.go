@@ -13,7 +13,7 @@ func TestTasksContainerAndArtifactsKeepDeploymentIdentity(t *testing.T) {
 		}
 	}
 	compose := rootFile(t, "docker-compose.yml")
-	for _, required := range []string{"tasks-data:/data", "DAYMARK_HOST"} {
+	for _, required := range []string{"tasks-data:/data", "TASKS_HOST"} {
 		if !strings.Contains(compose, required) {
 			t.Errorf("deployment compatibility missing %q", required)
 		}
