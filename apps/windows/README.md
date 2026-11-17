@@ -10,7 +10,7 @@ Native C#/WinUI 3 client, not a WebView. This is the first implementation slice 
 - Real authenticated task state, completion/undo, and task creation with repeat, interval, start date, category, priority, and notes.
 - Upcoming and Routines views (read-only in this slice).
 - Connection settings, test/reconnect, and local sign-out. There is deliberately no in-place account-switch form; sign out before changing accounts.
-- Settings shows the running application's file version/build, manual GitHub update checks, last-check time and expandable plain-text release notes. A newer Windows installer opens in the default browser; run the downloaded installer yourself. No background checks, automatic downloads or automatic installation.
+- Settings shows the running application's file version/build and uses the same Velopack update system as Windows Music: **Check for updates → Download with progress → Restart and install**. Each action is user-initiated; starting the app does not apply a staged update.
 - Refresh on activation and every 30 seconds. Task payloads and suggestion ordering exist only in memory; disconnected/signed-out views clear them.
 - One endpoint/account/session envelope encrypted for the current Windows user using `DataProtectionProvider("LOCAL=user")`, then committed with same-directory atomic replacement. No password storage. No plaintext task cache or write queue.
 - Startup shows a neutral session-restoration view until the protected session, remote validation and initial task fetch resolve. Missing/expired sessions show sign-in; restoration failures show a connection screen whose Reconnect action retries the entire restore. Sign out remains available to clear a saved session after failure.
@@ -19,17 +19,17 @@ The native client's navigation uses the existing product's Today, Upcoming, Rout
 
 ## Not included yet
 
-Task editing/archiving, full-history browsing, automatic updating, and tray/background behavior. Do not mistake the existing Android release manifest for a Windows update feed. The manual Windows checker uses the existing combined GitHub release's Windows installer assets; it does not consume the Android manifest.
+Task editing/archiving, full-history browsing, unattended updating, and tray/background behavior. Do not mistake the existing Android release manifest for a Windows update feed. The Windows updater requires its own Velopack feed and full package in the combined GitHub release.
 
-## Version and manual updates
+## Version and Windows Music-style updates
 
 The current version comes from the **running app assembly**, not the server, Git history on the user's machine, or latest-release metadata. Packaged releases use `0.1.N.0` plus source-stamped informational version metadata; unversioned/non-release builds are labeled Development build and never reported as up to date based on a guessed build number.
 
-**Check for updates** anonymously requests the latest stable release from the fixed `everyonesoftware/tasks` GitHub API endpoint. It distinguishes checking, current, newer, no releases, development and failed states. Failures/rate limits do not change the Tasks session or block task access. Results stay in memory. Requests disallow redirects/cookies, use normal TLS validation, send no Tasks credentials, and bound both metadata bytes and total time (including body reads).
+**Check for updates** uses an anonymous, Windows-specific GitHub release source for `everyonesoftware/tasks`, independent of the authenticated Tasks connection. It pages the release inventory and selects the highest numeric stable `vN` release containing a Windows feed, rather than assuming GitHub Latest is a Windows release. Truncated, malformed or ambiguous selected metadata fails closed. Rate limits and failed checks do not clear the Tasks session.
 
-A valid candidate must have canonical `vN` identity in `1..65534`, be non-draft/non-prerelease and include exactly one uploaded, nonempty `Tasks-Windows-N-Setup.exe` and matching `.sha256` sidecar, with exact HTTPS URLs under that same repository/release. Android-only or malformed/incomplete releases fail the check rather than being offered. Equal/older versions never offer a downgrade. Development builds can explicitly download the published release without claiming it is newer.
+A valid candidate has canonical `vN` identity in `1..65534`, is non-draft/non-prerelease, and supplies `releases.win-x64.json` plus the matching `TasksWindows-0.1.N-win-x64-full.nupkg` from that same repository/release. Feed/package/channel/version identity is validated and downgrades are disabled. Android-only releases and installer-only releases are not in-app update packages. Loose development builds must first be installed through the updater-enabled installer.
 
-**Download update** opens only the validated Windows asset URL in the default browser. The app does not download bytes, verify the sidecar digest, launch the installer or claim installation succeeded; browser download and manual installer execution remain user-controlled. No separate Windows manifest, backend credentials, automatic execution or Android updater reuse is involved. Native Windows browser handoff and Settings rendering remain separate acceptance gates.
+**Download update** downloads through Velopack with progress and package verification; it does not restart or install. **Restart and install** is a separate explicit action and must not discard a pending task operation or an unsafe/unpreserved session. `SetAutoApplyOnStartup(false)` prevents a later normal launch from silently applying downloaded bytes. Task data and ordering remain memory-only; the existing protected session envelope is retained. Native Windows Settings, actual installed-app upgrades and protected-session survival still require Windows acceptance; Linux compilation and HTTP fixtures do not prove them.
 
 ## Structure
 
@@ -47,7 +47,7 @@ Prerequisites: Windows 10 2004+ x64, .NET SDK 10.0.404 (latest patch roll-forwar
 ./build.ps1
 ```
 
-This runs the C# tests and performs a native, self-contained publish to `artifacts/portable`, embedding the commit-count Windows version and exact source SHA. Keep the **entire folder** together; `Tasks.exe` alone is not the application. This command builds a development folder, not an installer or a signed release. Before distributing it, verify it launches on a clean Windows machine and that the merged WinUI theme resources and native runtime files are present.
+This runs the C# tests, including the real Velopack-source tests, and performs a native, self-contained publish to `artifacts/portable`, embedding the commit-count Windows version and exact source SHA. Keep the **entire folder** together; `Tasks.exe` alone is not the application. This command builds a development folder, not an installer or a signed release. Before distributing it, verify it launches on a clean Windows machine and that the merged WinUI theme resources and native runtime files are present.
 
 Alternatively:
 
@@ -66,33 +66,65 @@ $build = (git rev-list --count HEAD).Trim()
 ./scripts/build-windows-installer.ps1 -BuildNumber $build -AllowUnsigned
 ```
 
-The supplied build must match full Git history and lie in `1..65534`. Packaging first
-runs the native build/tests, verifies the self-contained x64 payload and matching
-executable FileVersion, then compiles `installer/Tasks.iss`. Output:
+The supplied build must match full Git history and lie in `1..65534`; release inputs
+must be committed and clean. Packaging runs the native build/tests, verifies the
+self-contained x64 payload and matching executable FileVersion, then uses the
+pinned Velopack **1.2.161** tool. It validates the full package's identity, inventory
+and payload bytes. `installer/Tasks.iss` builds only an **unregistered transition
+guard** around the genuine Velopack setup, not another application installation.
+Output:
 
 - `dist/windows/Tasks-Windows-N-Setup.exe`
 - `dist/windows/Tasks-Windows-N-Setup.exe.sha256`
+- `dist/windows/TasksWindows-win-x64-Setup.exe`
+- `dist/windows/TasksWindows-win-x64-Setup.exe.sha256`
+- `dist/windows/TasksWindows-0.1.N-win-x64-full.nupkg`
+- `dist/windows/releases.win-x64.json`
+
+Both public setup filenames contain the same guarded bytes; the versioned alias
+preserves the filename expected by the old browser-only checker when that release
+is GitHub Latest. A Windows-only release deliberately is not Latest, so old clients
+must download that release's setup manually for this one-time transition. Filename
+compatibility alone does not migrate old clients. The raw, unguarded Velopack
+bootstrapper is not published. Feed and full-package bytes remain genuine Velopack
+output, used directly by installed apps for later updates.
 
 Existing staged bytes are never overwritten. For a deliberate local rebuild, remove
-only your previous generated `dist/windows` directory first. The Inno compiler version
-is logged. `-AllowUnsigned` acknowledges that no trusted publisher certificate is
+only your previous generated `dist/windows` directory first. `-AllowUnsigned`
+acknowledges that no trusted publisher certificate is
 applied and that Windows may display a SmartScreen warning.
 
-The installer uses a stable per-user identity, installs to
-`%LOCALAPPDATA%\Programs\Tasks`, creates a Start menu shortcut and registers a normal
-uninstaller. It does not register launch-at-sign-in or enable automatic updates.
-Uninstall removes installed files but deliberately preserves the separately protected
-user-session directory; sign out in Tasks first if you also want the session revoked.
+The default per-user install root remains `%LOCALAPPDATA%\Programs\Tasks`; Velopack
+owns its `current` application directory, `Update.exe`, Start menu shortcut and
+`TasksWindows` uninstall registration. No launch-at-sign-in is registered. Uninstall
+preserves the separately protected `%LOCALAPPDATA%\EveryoneSoftware\Tasks` session
+directory; sign out in Tasks first if you also want the session revoked.
 
-The main publishing workflow builds Windows alongside Android. Before uploading the
+### One-time transition from the old installer
+
+The old Inno installation is **not** a Velopack-managed installation. Setup refuses
+to proceed while its stable legacy AppId is registered, rather than installing a
+second copy or silently removing it. Close Tasks, uninstall Tasks once through
+Windows Settings → Apps, then run the new setup. Do **not** delete the Tasks profile:
+the old uninstaller preserves its protected session. The new setup also refuses
+an existing Velopack registration or a nonempty/overlapping destination. Later
+updates use Settings inside the installed app, not repeated setup execution.
+
+The legacy GUID is retained solely for detection, not reused as a second uninstall
+registration. Automated refusal tests and fresh installation acceptance do not
+prove real old→new session restoration or a subsequent in-app upgrade; those remain
+separate Windows acceptance gates.
+
+The main publishing workflow builds selected Windows/Android platforms. Before uploading the
 installer artifact it runs `scripts/test-windows-installer.ps1` on an isolated GitHub
 Windows runner: actual install, installed native-window launch/render/screenshot,
 graceful close and independently verified uninstall. The script refuses preexisting
 Tasks installations or profiles and is not a personal-machine test command.
 Diagnostics are retained on failure; failure blocks publication. The final release
-job waits for both application jobs and attaches the two Windows files beside the
-existing APK/manifest/checksum in **the same `vN` release**. No separate Windows release
-or updater feed is introduced, and existing releases are not overwritten.
+job gates publication on the selected application jobs and attaches the Windows
+setup aliases/checksums, feed and full package to the normal stable **`vN` release**.
+Existing releases are not overwritten. The Windows feed is separate from the
+Android manifest even when they share a user-facing release.
 
 The workflow cannot run against these uncommitted local files. Commit/push and a
 successful native hosted run are separate, still-required publication gates.
@@ -104,6 +136,7 @@ export PATH=/opt/data/tools/dotnet:$PATH
 export LD_LIBRARY_PATH=/opt/data/tools/icu/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 dotnet test Tasks.Storage.Tests/Tasks.Storage.Tests.csproj -c Release
 dotnet test Tasks.Core.Tests/Tasks.Core.Tests.csproj -c Release
+dotnet test Tasks.Update.Tests/Tasks.Update.Tests.csproj -c Release
 node --test ../../tests/windows/*.test.mjs
 dotnet build Tasks.App/Tasks.App.csproj -c Release \
   -p:OutputType=Library -p:WindowsAppSDKSelfContained=false \
@@ -123,5 +156,6 @@ Use a disposable Tasks API/database and a dedicated test Windows user, never per
 5. Disconnect while the app is open: clear task content, disable mutations, reconnect, and verify state. Test session expiry and offline sign-out, including the unconfirmed remote-revocation notice.
 6. Cancel and fail a task creation: preserve the draft while the dialog is open and never claim the write succeeded. Escape must not dismiss an in-flight write.
 7. Sign out, restart, and confirm no account/task access. Verify other Windows users cannot decrypt the session.
+8. In an isolated Windows account, verify the one-time legacy uninstall/new setup transition preserves the protected session, then perform a genuine newer-package Check → Download → Restart/install and read the installed version/session back. Confirm launch never auto-applies staged bytes, failed downloads are retryable, open drafts/mutations block restart, and uninstall removes installation/registration/shortcuts without deleting the protected session.
 
 Current execution evidence and explicit unverified gates are recorded in `../../docs/verification.md`.

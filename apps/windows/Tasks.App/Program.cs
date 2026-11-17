@@ -10,6 +10,7 @@ internal static class Program
     [STAThread]
     public static void Main()
     {
+        Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(callback =>
         {

@@ -8,6 +8,8 @@ public enum WindowsUpdateStatus { Available, Current, NoReleases, Development, F
 public sealed record WindowsUpdateResult(WindowsUpdateStatus Status, int? BuildNumber = null,
     string ReleaseNotes = "", Uri? DownloadUri = null);
 
+// Frozen legacy-client bridge fixture: retain its tests to protect old installer asset discovery.
+// Not compiled into Tasks.Core or used by current Settings; the app uses Velopack.
 // Deliberately independent of TasksClient: GitHub never receives the server session.
 public sealed class WindowsUpdateClient : IDisposable
 {

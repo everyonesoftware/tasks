@@ -1,30 +1,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 const read = name => readFileSync(new URL(`../../apps/windows/${name}`, import.meta.url), 'utf8');
 
-test('Settings exposes real installed version and manual Windows release controls', () => {
-  const xaml = read('Tasks.App/Shell.xaml');
-  const code = read('Tasks.App/MainWindow.cs');
-  for (const name of ['InstalledVersion', 'UpdateStatus', 'UpdateProgress', 'CheckUpdates', 'DownloadUpdate', 'ReleaseNotes', 'LastUpdateCheck']) {
-    assert.ok(xaml.includes(`x:Name="${name}"`), `Missing update control ${name}`);
-  }
-  assert.match(code, /WindowsAppVersion.FromAssembly\(typeof\(MainWindow\).Assembly\)/);
-  assert.match(code, /Find<Button>\("CheckUpdates"\)\.Click/);
-  assert.match(code, /Find<Button>\("DownloadUpdate"\)\.Click/);
-  assert.match(code, /Launcher.LaunchUriAsync/);
-  assert.match(xaml, /browser/);
-  assert.doesNotMatch(xaml, /Windows development build · No automatic updater/);
+test('retired manual checker remains a bridge compatibility fixture, not shipped dead production code', () => {
+  assert.equal(existsSync(new URL('../../apps/windows/Tasks.Core/WindowsUpdateClient.cs', import.meta.url)), false);
+  assert.match(read('Tasks.Core.Tests/LegacyWindowsUpdateClient.cs'), /class WindowsUpdateClient/);
 });
 
-test('update checks are independent of task network operations and cannot duplicate', () => {
+test('Settings uses integrated explicit Check -> Download -> Restart with real version', () => {
   const code = read('Tasks.App/MainWindow.cs');
-  assert.match(code, /if \(checkingUpdates \|\| closed\) return/);
-  assert.match(code, /updates.CheckAsync\(installedVersion.BuildNumber, lifetime.Token\)/);
-  assert.match(code, /updateResult = null/);
-  assert.match(code, /checkingUpdates = true/);
-  assert.match(code, /checkingUpdates = false/);
+  assert.match(code, /WindowsAppVersion.FromAssembly\(typeof\(MainWindow\).Assembly\)/);
+  assert.match(code, /new WindowsUpdatesPanel\(root, DispatcherQueue, RestartUpdatesAsync\)/);
+  assert.match(code, /new WindowsUpdateController\(new WindowsUpdateBackend\(\),/);
+  assert.match(code, /client.PrepareForUpdateRestartAsync\(lifetime.Token\)/);
+  assert.doesNotMatch(code, /WindowsUpdateClient|Launcher.LaunchUriAsync|updateResult/);
+  const panel = read('Tasks.App/WindowsUpdatesPanel.cs');
+  assert.match(panel, /controller.CheckAsync\(\)/);
+  assert.match(panel, /controller.DownloadAsync\(\)/);
+  assert.match(panel, /Restart and install/);
+  assert.match(panel, /state.Progress/);
+  assert.match(panel, /dispatcher.TryEnqueue/);
+  assert.match(panel, /controller.Status/);
+});
+
+test('restart holds task operation gate through protected session readback and apply', () => {
+  const code = read('Tasks.App/MainWindow.cs');
+  const restart = code.slice(code.indexOf('private async Task RestartUpdatesAsync'), code.indexOf('private async Task SignInAsync'));
+  assert.match(restart, /operations.TryBeginRestart\(\)/);
+  assert.match(restart, /await updates.RestartAsync\(\)/);
+  assert.match(restart, /finally[\s\S]*operations.EndRestart\(\)/);
   assert.match(code, /updates.Dispose\(\)/);
-  const check = code.slice(code.indexOf('private async Task CheckUpdatesAsync'), code.indexOf('private async Task DownloadUpdateAsync'));
-  assert.doesNotMatch(check, /RunAsync\(|client\./);
+  assert.match(code, /updatesPanel.Dispose\(\)/);
+  const startup = code.slice(code.indexOf('root.Loaded +='), code.indexOf('Closed +='));
+  assert.doesNotMatch(startup, /updates\.(Check|Download|Restart)/);
+});
+
+test('Velopack hook runs before WinUI, disables startup apply and pins actual Music version', () => {
+  const program = read('Tasks.App/Program.cs');
+  assert.match(program, /VelopackApp.Build\(\).SetAutoApplyOnStartup\(false\).Run\(\)/);
+  assert.ok(program.indexOf('VelopackApp.Build') < program.indexOf('InitializeComWrappers'));
+  assert.match(read('Tasks.App/Tasks.App.csproj'), /PackageReference Include="Velopack" Version="1.2.161"/);
+  const backend = read('Tasks.App/WindowsUpdateBackend.cs');
+  assert.match(backend, /AllowVersionDowngrade = false/);
+  assert.match(backend, /MaximumDeltasBeforeFallback = -1/);
+  assert.match(backend, /accessToken: null/);
 });

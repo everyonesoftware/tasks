@@ -25,6 +25,7 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.161" />
     <ProjectReference Include="../Tasks.Core/Tasks.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260803003" />
     <EmbeddedResource Include="Shell.xaml" LogicalName="Tasks.App.Shell.xaml" />

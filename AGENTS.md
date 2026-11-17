@@ -23,6 +23,9 @@ One cohesive product: web, native Android, native Windows, and a private single-
 ## Design
 Approved Focus + queue, dark slate/mint. Current task panel, Not now behind its top-right three-dot menu, Mark done bottom-right, daily progress, waiting task selection. Larger phone type: descriptions/buttons16px/sp, queue titles18px/sp, metadata14px/sp. No weekday strip, sample reading encouragement, or removed footer slogans. Actual app has no exploration tabs or phone-scale slider.
 
+## Windows updates
+Use the same Velopack system as Windows Music, with user-initiated Settings actions: Check for updates → Download with progress → Restart and install. Inspect Music's actual implementation and pinned tooling rather than substituting a browser-only installer handoff. Disable automatic startup application of staged updates, reject downgrades, keep release transport independent of Tasks credentials, and publish the Windows feed/full package in the normal combined application release. Preserve the protected session and server-only task-data rules. Existing Inno installations need an explicit migration path; local tests and Linux compilation do not establish a native installed-app upgrade.
+
 ## Safety
 Tasks is a branding change, not an installation identity change. Preserve Android package/signing identity, database paths, legacy `DAYMARK_*` configuration/secrets (except the explicitly renamed `TASKS_HOST` hostname setting), session/storage keys and `daymark-release.json`; see `docs/rebranding.md`.
 

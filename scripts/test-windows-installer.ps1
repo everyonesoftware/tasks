@@ -90,18 +90,57 @@ function Get-Registrations {
         foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64, [Microsoft.Win32.RegistryView]::Registry32)) {
             $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, $view)
             try {
-                $key = $base.OpenSubKey($uninstallKey)
+                foreach ($registrationKey in @($uninstallKey, $legacyUninstallKey)) {
+                $key = $base.OpenSubKey($registrationKey)
                 if ($null -eq $key) { continue }
                 try {
                     # Only scalars: no recursive PowerShell registry-provider metadata.
-                    [pscustomobject]@{ hive = $hive.ToString(); view = $view.ToString()
+                    [pscustomobject]@{ hive = $hive.ToString(); view = $view.ToString(); key = $registrationKey
                         DisplayName = [string]$key.GetValue('DisplayName'); DisplayVersion = [string]$key.GetValue('DisplayVersion')
                         InstallLocation = [string]$key.GetValue('InstallLocation'); UninstallString = [string]$key.GetValue('UninstallString') }
                 } finally { $key.Dispose() }
+                }
             } finally { $base.Dispose() }
         }
     }
 }
+function Invoke-LegacyRefusalGate {
+    # These are explicit registry-only fixtures, NOT a claim of upgrading an old
+    # installed app. Never run outside the already-checked ephemeral runner.
+    foreach ($view in @([Microsoft.Win32.RegistryView]::Registry32, [Microsoft.Win32.RegistryView]::Registry64)) {
+        $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, $view)
+        $label = 'legacy-refusal-' + $view.ToString()
+        $marker = [guid]::NewGuid().ToString('N')
+        try {
+            $existing = $base.OpenSubKey($legacyUninstallKey)
+            if ($existing) { $existing.Dispose(); throw 'Refusing preexisting legacy registration' }
+            $key = $base.CreateSubKey($legacyUninstallKey)
+            try { $key.SetValue('TasksLifecycleFixture', $marker) } finally { $key.Dispose() }
+            $expectedFailure = $false
+            try {
+                Invoke-BoundedProcess $installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$installRoot", "/LOG=$(Join-Path $evidence ($label + '.log'))") $label (Get-OperationBudget $lifecycleDeadline 15)
+            } catch { $expectedFailure = $true }
+            $result = Get-Content -LiteralPath (Join-Path $evidence ($label + '-result.json')) -Raw | ConvertFrom-Json
+            if (-not $expectedFailure -or $result.timedOut -or $result.exitCode -ne 1) { throw 'Legacy registration was not safely refused' }
+            $key = $base.OpenSubKey($legacyUninstallKey)
+            try { if (-not $key -or $key.GetValue('TasksLifecycleFixture') -cne $marker) { throw 'Legacy registration was changed' } } finally { if ($key) { $key.Dispose() } }
+            if (Test-Path -LiteralPath $installRoot) { throw 'Legacy refusal installed files' }
+            if (Test-Path -LiteralPath $profile) { throw 'Legacy refusal touched protected profile' }
+            if (@(Get-Registrations | Where-Object key -eq $uninstallKey).Count) { throw 'Legacy refusal registered a second app' }
+        } finally {
+            $key = $base.OpenSubKey($legacyUninstallKey)
+            if ($key) {
+                try { $owned = $key.GetValue('TasksLifecycleFixture') -ceq $marker } finally { $key.Dispose() }
+                if (-not $owned) { throw 'Refusing unrelated legacy registration cleanup' }
+                $base.DeleteSubKeyTree($legacyUninstallKey, $false)
+            }
+            $base.Dispose()
+        }
+    }
+    if (@(Get-Registrations).Count) { throw 'Legacy refusal fixture survived' }
+    $summary.legacyRegistrationRefusalVerified = $true
+}
+
 function Get-OwnedProcesses {
     if (-not $installRoot) { return }
     Assert-FixtureRoot $installRoot $runnerTemp
@@ -129,7 +168,7 @@ function Get-TaskLinks {
                 try {
                     $target = [string]$link.TargetPath
                     if ($file.Name -ieq 'Tasks.lnk' -or ($installRoot -and $target.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase))) {
-                        [pscustomobject]@{ path = $file.FullName; target = $target }
+                        [pscustomobject]@{ path = $file.FullName; target = $target; arguments = [string]$link.Arguments }
                     }
                 } finally { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($link) }
             }
@@ -276,10 +315,11 @@ $started = [DateTime]::UtcNow
 $lifecycleDeadline = $started.AddSeconds(200) # reserve the rest of the five-minute step for cleanup/evidence
 $summary = [ordered]@{ schemaVersion = 1; status = 'failed'; startedUtc = $started.ToString('o')
     installerSha256 = $null; installRoot = $null; installVerified = $false; windowVerified = $false
-    gracefulCloseVerified = $false; uninstallVerified = $false; screenshotSha256 = $null
+    gracefulCloseVerified = $false; uninstallVerified = $false; legacyRegistrationRefusalVerified = $false; reinstallRefusalVerified = $false; screenshotSha256 = $null
     cleanupErrors = @(); failure = $null }
 $installRoot = $null; $profile = $null; $mutationStarted = $false; $transcriptStarted = $false; $app = $null
-$uninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{d65cbd98-53e5-47a0-8c65-fcc03f2df1ac}_is1'
+$legacyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{d65cbd98-53e5-47a0-8c65-fcc03f2df1ac}_is1'
+$uninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\TasksWindows'
 $runnerTemp = $env:RUNNER_TEMP
 # Evidence can be written on Linux for an honest fail-closed result, but must
 # always be scoped to a real runner temp and must never overwrite diagnostics.
@@ -310,31 +350,44 @@ try {
     if (Test-Path -LiteralPath $defaultInstall) { throw 'Preexisting default Tasks install' }
     if (@(Get-Registrations).Count) { throw 'Preexisting HKCU/HKLM Tasks registration' }
     if (@(Get-TaskLinks).Count) { throw 'Preexisting Tasks shortcut' }
+    $mutationStarted = $true # A broken guard must still trigger owned failure cleanup.
+    Invoke-LegacyRefusalGate
     Initialize-Native
     Write-Json @{ os = [Environment]::OSVersion.VersionString; sessionId = (Get-Process -Id $PID).SessionId
         powershell = $PSVersionTable.PSVersion.ToString(); runnerImage = $env:ImageOS } 'environment.json'
     $mutationStarted = $true
     Invoke-BoundedProcess $installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$installRoot", "/LOG=$(Join-Path $evidence 'install.log')") 'install' (Get-OperationBudget $lifecycleDeadline 60)
-    $appExe = Join-Path $installRoot 'Tasks.exe'
-    $uninstaller = Join-Path $installRoot 'unins000.exe'
-    foreach ($relative in @('Tasks.exe', 'Tasks.dll', 'resources.pri', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'coreclr.dll', 'unins000.exe')) {
+    $appExe = Join-Path $installRoot 'current\Tasks.exe'
+    $uninstaller = Join-Path $installRoot 'Update.exe'
+    foreach ($relative in @('current\Tasks.exe', 'current\Tasks.dll', 'current\resources.pri', 'current\Microsoft.UI.Xaml.dll', 'current\Microsoft.WindowsAppRuntime.dll', 'current\coreclr.dll', 'Update.exe')) {
         $file = Get-Item -LiteralPath (Join-Path $installRoot $relative)
         if ($file.PSIsContainer -or $file.Length -le 0) { throw "Missing/empty payload: $relative" }
     }
     Write-Json @(Get-ChildItem -LiteralPath $installRoot -Recurse -File | Select-Object FullName, Length) 'installed-files.json'
     $registrations = @(Get-Registrations)
-    if (-not $registrations.Count) { throw 'Missing Inno registration' }
+    if (-not $registrations.Count) { throw 'Missing Velopack registration' }
     foreach ($entry in $registrations) {
-        if ($entry.hive -ne 'CurrentUser' -or $entry.InstallLocation.TrimEnd('\') -ine $installRoot) { throw 'Incorrect per-user install registration' }
+        if ($entry.key -ne $uninstallKey -or $entry.hive -ne 'CurrentUser' -or $entry.InstallLocation.TrimEnd('\') -ine $installRoot) { throw 'Incorrect or side-by-side per-user install registration' }
     }
     Write-Json @($registrations | Select-Object DisplayName, DisplayVersion, InstallLocation, UninstallString) 'registration.json'
     $links = @(Get-TaskLinks)
     Write-Json $links 'installed-shortcuts.json'
-    if (-not @($links | Where-Object { $_.target -ieq $appExe -and $_.path.StartsWith([Environment]::GetFolderPath('StartMenu') + '\', [StringComparison]::OrdinalIgnoreCase) }).Count) {
-        throw 'No per-user Start menu shortcut targets exact installed Tasks.exe'
+    # vpk 1.2.161 creates a shortcut to current/mainExe with no arguments.
+    if (-not @($links | Where-Object { $_.target -ieq $appExe -and $_.arguments -ceq '' -and $_.path.StartsWith([Environment]::GetFolderPath('StartMenu') + '\', [StringComparison]::OrdinalIgnoreCase) }).Count) {
+        throw 'No per-user Start menu shortcut targets exact installed Tasks.exe with empty arguments'
     }
     if (Test-Path -LiteralPath $profile) { throw 'Profile unexpectedly created before first launch' }
     $summary.installVerified = $true
+    $beforeRepeat = (Get-FileHash -LiteralPath $appExe -Algorithm SHA256).Hash
+    $refused = $false
+    try {
+        Invoke-BoundedProcess $installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$installRoot", "/LOG=$(Join-Path $evidence 'repeat-setup-refusal.log')") 'repeat-setup-refusal' (Get-OperationBudget $lifecycleDeadline 15)
+    } catch { $refused = $true }
+    $repeat = Get-Content -LiteralPath (Join-Path $evidence 'repeat-setup-refusal-result.json') -Raw | ConvertFrom-Json
+    if (-not $refused -or $repeat.timedOut -or $repeat.exitCode -ne 1) { throw 'Repeated setup was not safely refused' }
+    if ((Get-FileHash -LiteralPath $appExe -Algorithm SHA256).Hash -cne $beforeRepeat) { throw 'Refused setup changed installed app bytes' }
+    if (@(Get-Registrations | Where-Object { $_.key -ne $uninstallKey -or $_.InstallLocation.TrimEnd('\') -ine $installRoot }).Count) { throw 'Repeated setup created a side-by-side installation' }
+    $summary.reinstallRefusalVerified = $true
     $app = Start-Process -FilePath $appExe -WorkingDirectory $evidence -PassThru `
         -RedirectStandardOutput (Join-Path $evidence 'app-stdout.txt') -RedirectStandardError (Join-Path $evidence 'app-stderr.txt')
     $appPid = $app.Id; $window = $null; $stableSamples = 0; $lastHandle = [IntPtr]::Zero
@@ -370,7 +423,7 @@ try {
     Write-Json @{ pid = $appPid; hasExited = $app.HasExited; exitCode = $app.ExitCode } 'app-exit.json'
     if ($app.ExitCode -ne 0) { throw 'App exited abnormally after close' }
     $summary.gracefulCloseVerified = $true
-    Invoke-BoundedProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$(Join-Path $evidence 'uninstall.log')") 'uninstall' (Get-OperationBudget $lifecycleDeadline 60)
+    Invoke-BoundedProcess $uninstaller @('--uninstall', '--silent', '--log', (Join-Path $evidence 'uninstall.log')) 'uninstall' (Get-OperationBudget $lifecycleDeadline 60)
     $removalDeadline = [DateTime]::UtcNow.AddSeconds((Get-OperationBudget $lifecycleDeadline 20))
     do {
         $remaining = Get-RemainingInstallation
@@ -397,9 +450,9 @@ try {
             Invoke-CleanupAction $summary 'Failure diagnostics' { $null = Get-RemainingInstallation }
             Invoke-CleanupAction $summary 'Stop owned processes' { Stop-OwnedProcesses }
             Invoke-CleanupAction $summary 'Cleanup uninstall' {
-                $uninstaller = Join-Path $installRoot 'unins000.exe'
+                $uninstaller = Join-Path $installRoot 'Update.exe'
                 if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
-                    Invoke-BoundedProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$(Join-Path $evidence 'cleanup-uninstall.log')") 'cleanup-uninstall' 30
+                    Invoke-BoundedProcess $uninstaller @('--uninstall', '--silent', '--log', (Join-Path $evidence 'cleanup-uninstall.log')) 'cleanup-uninstall' 30
                 }
             }
             Invoke-CleanupAction $summary 'Stop after uninstall' { Stop-OwnedProcesses }
@@ -411,7 +464,7 @@ try {
             }
             Invoke-CleanupAction $summary 'Owned registry' {
                 foreach ($entry in @(Get-Registrations)) {
-                    if ($entry.hive -ne 'CurrentUser' -or $entry.InstallLocation.TrimEnd('\') -ine $installRoot) { throw 'Refusing unrelated registry removal' }
+                    if ($entry.key -ne $uninstallKey -or $entry.hive -ne 'CurrentUser' -or $entry.InstallLocation.TrimEnd('\') -ine $installRoot) { throw 'Refusing unrelated registry removal' }
                     $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Enum]::Parse([Microsoft.Win32.RegistryView], $entry.view))
                     try { $base.DeleteSubKeyTree($uninstallKey, $false) } finally { $base.Dispose() }
                 }

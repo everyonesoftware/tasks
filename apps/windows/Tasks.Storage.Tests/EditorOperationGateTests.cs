@@ -6,6 +6,30 @@ namespace Tasks.Storage.Tests;
 public sealed class EditorOperationGateTests
 {
     [Fact]
+    public async Task Update_restart_excludes_unsaved_draft_network_write_and_new_operations_until_released()
+    {
+        var gate = new EditorOperationGate();
+        var begin = typeof(EditorOperationGate).GetMethod("TryBeginRestart");
+        var end = typeof(EditorOperationGate).GetMethod("EndRestart");
+        Assert.NotNull(begin); Assert.NotNull(end);
+        bool Begin() => (bool)begin.Invoke(gate, null)!;
+        gate.SetConnected(true);
+        Assert.True(gate.TryOpenEditor());
+        Assert.False(Begin());
+        gate.CloseEditor();
+        var release = new TaskCompletionSource();
+        var operation = gate.ExecuteAsync(() => release.Task);
+        Assert.False(Begin());
+        release.SetResult(); await operation;
+        Assert.True(Begin());
+        Assert.False(Begin());
+        Assert.False(gate.TryOpenEditor());
+        Assert.False(await gate.ExecuteAsync(() => throw new Exception("must not run"), allowDuringEditor: true));
+        end.Invoke(gate, null);
+        Assert.True(gate.TryOpenEditor());
+    }
+
+    [Fact]
     public async Task SignOutSuppressesTaskAccessBeforeBlockedRemoteRevocation()
     {
         var gate = new EditorOperationGate();

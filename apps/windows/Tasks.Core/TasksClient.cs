@@ -187,6 +187,21 @@ public sealed class TasksClient : IDisposable
         catch { throw new TasksClientException("Signed out locally. Server session revocation could not be confirmed."); }
         finally { gate.Release(); }
     }
+    /// <summary>Serialize with authentication/writes and verify the existing protected envelope.
+    /// No task payload or focus order is persisted for an update restart.</summary>
+    public async Task PrepareForUpdateRestartAsync(CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureAvailable();
+            var saved = await vault.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (Session is not null && saved != Session) throw new TasksClientException();
+        }
+        catch (OperationCanceledException) { throw new OperationCanceledException("The request was cancelled.", cancellationToken); }
+        catch { throw new TasksClientException("Could not verify the protected session. Restart was blocked."); }
+        finally { gate.Release(); }
+    }
     public void Select(string occurrenceId)
     {
         lock (focusLock) { if (!order.Remove(occurrenceId)) return; order.Insert(0, occurrenceId); }

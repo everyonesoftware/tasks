@@ -86,6 +86,39 @@ export function stageInstaller(setupPath, outputDirectory, value) {
   return { filename, sha256, bytes: bytes.length };
 }
 
+// The public setup is an unregistered migration guard containing the genuine vpk
+// setup. Never publish the unguarded bootstrapper: it cannot detect old Inno installs.
+export function stageVelopack(source, guardedSetup, output, value) {
+  const number = validateBuildNumber(value), version = `0.1.${number}`;
+  const packageName = `TasksWindows-${version}-win-x64-full.nupkg`;
+  const setupName = 'TasksWindows-win-x64-Setup.exe';
+  const feedName = 'releases.win-x64.json';
+  for (const name of [packageName, setupName, feedName]) {
+    const stat = fs.lstatSync(path.join(source, name));
+    if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) throw new Error('Invalid Velopack inventory member.');
+  }
+  if (![0x14c, 0x8664].includes(peMachine(path.join(source, setupName))) || ![0x14c, 0x8664].includes(peMachine(guardedSetup))) throw new Error('Invalid Velopack setup executable.');
+  const feedBytes = fs.readFileSync(path.join(source, feedName));
+  const feed = JSON.parse(feedBytes.toString('utf8').replace(/^\uFEFF/, ''));
+  if (!Array.isArray(feed.Assets) || feed.Assets.length !== 1) throw new Error('Ambiguous Velopack feed inventory.');
+  const asset = feed.Assets[0], bytes = fs.readFileSync(path.join(source, packageName));
+  if (asset.PackageId !== 'TasksWindows' || asset.Version !== version || asset.Type !== 'Full' || asset.FileName !== packageName || asset.Size !== bytes.length) throw new Error('Velopack feed package identity mismatch.');
+  for (const [field, algorithm] of [['SHA1', 'sha1'], ['SHA256', 'sha256']]) {
+    if (typeof asset[field] !== 'string' || asset[field].toLowerCase() !== crypto.createHash(algorithm).update(bytes).digest('hex')) throw new Error('Velopack feed package digest mismatch.');
+  }
+  if (!bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 3, 4]))) throw new Error('Velopack package is not a ZIP archive.');
+  // Native build additionally validates the ZIP inventory and extracted payload.
+  const guard = fs.readFileSync(guardedSetup), digest = crypto.createHash('sha256').update(guard).digest('hex');
+  const files = new Map([[packageName, bytes], [feedName, feedBytes]]);
+  for (const name of [setupName, `Tasks-Windows-${number}-Setup.exe`]) {
+    files.set(name, guard); files.set(name + '.sha256', Buffer.from(`${digest}  ${name}\n`));
+  }
+  if (fs.existsSync(output) && (!fs.lstatSync(output).isDirectory() || fs.lstatSync(output).isSymbolicLink() || fs.readdirSync(output).length)) throw new Error('Velopack output must be empty; refusing to overwrite release bytes.');
+  fs.mkdirSync(output, { recursive: true });
+  for (const [name, data] of files) fs.writeFileSync(path.join(output, name), data, { flag: 'wx' });
+  return { version, files: [...files.keys()] };
+}
+
 function argumentsFor(values) {
   const options = new Map();
   for (let i = 0; i < values.length; i += 2) {
@@ -103,7 +136,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (command === 'info') result = buildInfo(root, options.get('--build-number'));
     else if (command === 'validate-payload' && options.has('--directory')) result = { files: validatePayload(options.get('--directory')).length };
     else if (command === 'stage-installer' && options.has('--setup') && options.has('--directory') && options.has('--build-number')) result = stageInstaller(options.get('--setup'), options.get('--directory'), options.get('--build-number'));
-    else throw new Error('Expected info, validate-payload, or stage-installer with required arguments.');
+    else if (command === 'stage-velopack' && ['--source', '--guard', '--directory', '--build-number'].every(key => options.has(key))) result = stageVelopack(options.get('--source'), options.get('--guard'), options.get('--directory'), options.get('--build-number'));
+    else throw new Error('Expected info, validate-payload, stage-installer, or stage-velopack with required arguments.');
     console.log(JSON.stringify(result));
   } catch (error) {
     console.error(error.message);

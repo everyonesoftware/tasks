@@ -2,10 +2,14 @@
 
 `.github/workflows/publish.yml` runs on pushes to `main`, or manually on `main`.
 It tests the server/web first, then independently publishes the container and builds
-Android and Windows. One release job waits for both application jobs: Android tests,
-lint, signing and APK verification, plus the native Windows build and real installer
-lifecycle gate. Only then does it create the stable GitHub Release containing both
-clients. It does not deploy a server, modify live databases, or install on personal
+the changed Android/Windows platforms. Application selection compares against each
+platform's verified publication source, not merely the previous push, so a failed
+build remains eligible on a later push. Unchanged binaries remain in their original
+releases; they are not rebuilt, copied or relabeled. One release job requires
+successful validation and success or an intentional skip from each application job:
+Android tests/lint/signing/APK verification and the native Windows build/installer
+lifecycle gate run when selected. Only then does it create a stable GitHub Release
+with the selected client outputs. It does not deploy a server, modify live databases, or install on personal
 devices. The installer gate uses only a disposable hosted Windows runner.
 
 ## Shared version
@@ -27,11 +31,13 @@ For count `N`:
 - Windows executable version: `0.1.N`, file version `0.1.N.0`, with the exact source
   SHA in its informational version. Windows requires `N <= 65534` because .NET
   assembly-version components have a tighter bound than Android version codes.
-- Windows release assets: `Tasks-Windows-N-Setup.exe` and
-  `Tasks-Windows-N-Setup.exe.sha256`. The sidecar hashes the exact installer bytes
-  and does not replace Android's existing `SHA256SUMS`.
+- Windows release assets: `Tasks-Windows-N-Setup.exe` and its `.sha256` legacy
+  filename-compatibility alias; `TasksWindows-win-x64-Setup.exe` and its `.sha256`; genuine
+  `TasksWindows-0.1.N-win-x64-full.nupkg` and `releases.win-x64.json`. Both setup
+  aliases have identical guarded bytes. Sidecars hash those exact installer bytes
+  and do not replace Android's existing `SHA256SUMS`.
 - GitHub Release: tag `vN`, title `Tasks N`, targeting the exact build commit, with
-  the three Android files and two Windows files attached, plus generated notes.
+  the selected platforms' verified files attached, plus generated notes.
 
 Publishers are serialized, and `latest` is added only if the build SHA still matches
 the remote `main` head when choosing tags. Replaying an older workflow keeps its
@@ -90,8 +96,10 @@ stable releases, not drafts or prereleases, and remain after the workflow artifa
 expires. The existing standalone packaging helper remains available for manual
 release preparation; CI stages its own matching manifest without a Python dependency.
 
-The release becomes `latest` only when the build SHA matches remote `main` at
-publication time. Older reruns can create their numbered release without replacing
+The release becomes `latest` only when it includes a newly verified Android APK
+and the build SHA matches remote `main` at publication time. Windows-only releases
+remain stable numbered releases with `latest=false`; existing Android clients can
+continue consuming the previous APK-compatible Latest release. Older reruns can create their numbered release without replacing
 `latest`; a failed remote-head lookup prevents release creation. The job resolves
 any existing `vN` tag (including annotated tags) to its commit and rejects a
 different build SHA. It checks the tag again after release creation. If a release
@@ -99,7 +107,7 @@ for `vN` already exists, creation fails rather than replacing its APK or changin
 its tag. Failed
 asset uploads can leave a draft requiring explicit operator recovery; reruns do not
 silently overwrite an existing release. After creation, the job reads back that
-exact release and requires all five uploaded assets on a non-draft, non-prerelease
+exact release and requires all selected uploaded assets on a non-draft, non-prerelease
 release before reporting success.
 
 The manifest enables the Android updater to discover the release. Download and
@@ -110,19 +118,34 @@ independent: a container-job failure does not block a successful combined applic
 ## Unsigned Windows installer
 
 The Windows job uses the native Windows 2025 build environment, the pinned .NET SDK
-from `apps/windows/global.json`, and the runner's Inno Setup compiler. It runs the
-Windows tests, publishes the actual self-contained x64 WinUI client, verifies its
-native runtime/merged PRI and source-bound file version, then compiles the installer.
+from `apps/windows/global.json`, Velopack **1.2.161** from the local tool manifest,
+and the runner's Inno Setup compiler solely for the unregistered transition guard.
+It runs the Windows tests (including the actual pinned updater-source tests),
+publishes the self-contained x64 WinUI client, verifies its native runtime/merged
+PRI and source-bound file version, packs and validates the genuine full nupkg/feed,
+then embeds the genuine setup in the guard. Neither public setup alias bypasses
+the guard; no second Inno application installation or registration is created.
 It never packages the Linux compile-only library. Missing native payloads, mixed-case
 duplicate files, linked files, private data, wrong architectures and version/source
 mismatches fail closed. No Windows signing certificate or signing secret is needed;
 unsigned distribution is explicit and Windows may display a SmartScreen warning.
 
 Installation is per-user, without administrator rights, under
-`%LOCALAPPDATA%\Programs\Tasks`, with a Start menu shortcut and a normal uninstaller.
-The Windows installation identity is stable. Task data remains server-only; uninstall
-does not delete the protected user-session directory or contact the server. There is
-no launch-at-sign-in registration or automatic updater/feed.
+`%LOCALAPPDATA%\Programs\Tasks`, with Velopack's `current` application directory,
+`Update.exe`, a Start menu shortcut and `TasksWindows` uninstall registration.
+The old Inno GUID is retained for detection: existing installations are refused
+and require a one-time manual uninstall before setup, rather than an unverified
+automatic migration or side-by-side installation. Uninstall does not delete the
+separate protected user-session directory or contact the server; task data remains
+server-only. Existing Velopack installations update through Settings, not repeated
+setup execution. There is no launch-at-sign-in or automatic startup apply. Settings
+uses explicit Check → Download with progress → Restart and install.
+
+Windows-only releases must remain `latest=false` because existing Android clients
+consume GitHub Latest. The old browser-only Windows checker also uses Latest, so
+its compatible filename cannot discover a newer Windows-only release automatically.
+Existing Inno users must download that release manually for the one-time transition;
+after installation, Velopack's Windows-specific feed selection does not depend on Latest.
 
 Before publishing the installer artifact, CI installs it into an isolated runner-temp
 directory, launches the **installed** executable, requires a responsive rendered native

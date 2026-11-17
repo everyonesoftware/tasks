@@ -20,10 +20,13 @@ try {
     dotnet test Tasks.Core.Tests/Tasks.Core.Tests.csproj -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
 
+    dotnet test Tasks.Update.Tests/Tasks.Update.Tests.csproj -c Release
+    if ($LASTEXITCODE -ne 0) { throw 'Velopack updater tests failed.' }
+
     $artifacts = Join-Path $PSScriptRoot 'artifacts'
     New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
     $staging = Join-Path $artifacts ('.publish-' + [Guid]::NewGuid().ToString('N'))
-    dotnet publish Tasks.App/Tasks.App.csproj -c Release -r win-x64 -o $staging "-p:Version=$($identity.version)" "-p:FileVersion=$($identity.fileVersion)" "-p:InformationalVersion=$($identity.version)+$($identity.sourceSha)" -p:IncludeSourceRevisionInInformationalVersion=false -p:DebugType=None -p:DebugSymbols=false
+    dotnet publish Tasks.App/Tasks.App.csproj -c Release -r win-x64 --self-contained true -p:WindowsAppSDKSelfContained=true -o $staging "-p:Version=$($identity.version)" "-p:FileVersion=$($identity.fileVersion)" "-p:InformationalVersion=$($identity.version)+$($identity.sourceSha)" -p:IncludeSourceRevisionInInformationalVersion=false -p:DebugType=None -p:DebugSymbols=false
     if ($LASTEXITCODE -ne 0) { throw 'Native Windows publish failed.' }
     foreach ($required in @('Tasks.exe', 'Tasks.dll', 'resources.pri', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'coreclr.dll')) {
         if (-not (Test-Path -LiteralPath (Join-Path $staging $required) -PathType Leaf)) {

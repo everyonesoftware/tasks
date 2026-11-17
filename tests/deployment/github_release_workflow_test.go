@@ -10,7 +10,7 @@ import (
 
 // runAndroidReleaseWorkflow executes the real workflow shell with local-only Git/GH boundaries.
 // A successful fake create switches subsequent tag lookups to the post-create state.
-func runAndroidReleaseWorkflow(t *testing.T, run, remote, failure, before, after string) (string, error, string, string, string) {
+func runAndroidReleaseWorkflow(t *testing.T, run, remote, failure, before, after string, platforms ...string) (string, error, string, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, content := range map[string]string{
@@ -45,6 +45,10 @@ case "$1 $2" in
     [[ $FAILURE == missing ]] || echo daymark-release.json
     [[ $FAILURE == missing-windows-installer ]] || echo Tasks-Windows-137-Setup.exe
     [[ $FAILURE == missing-windows-checksum ]] || echo Tasks-Windows-137-Setup.exe.sha256
+    [[ $FAILURE == missing-velopack-setup ]] || echo TasksWindows-win-x64-Setup.exe
+    [[ $FAILURE == missing-velopack-checksum ]] || echo TasksWindows-win-x64-Setup.exe.sha256
+    [[ $FAILURE == missing-velopack-feed ]] || echo releases.win-x64.json
+    [[ $FAILURE == missing-velopack-package ]] || echo TasksWindows-0.1.137-win-x64-full.nupkg
     ;;
   *) exit 2 ;;
 esac
@@ -58,6 +62,11 @@ exit 0
 	calls, gitCalls, summary := filepath.Join(dir, "calls"), filepath.Join(dir, "git-calls"), filepath.Join(dir, "summary")
 	cmd := exec.Command("bash", "-euo", "pipefail", "-c", run)
 	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "REMOTE="+remote, "FAILURE="+failure, "CALLS="+calls, "GIT_CALLS="+gitCalls, "CREATED="+filepath.Join(dir, "created"), "TAG_BEFORE="+before, "TAG_AFTER="+after, "DAYMARK_VERSION=137", "GITHUB_SHA="+strings.Repeat("a", 40), "GITHUB_REPOSITORY=fixture/tasks", "GITHUB_STEP_SUMMARY="+summary)
+	android, windows := "true", "true"
+	if len(platforms) == 2 {
+		android, windows = platforms[0], platforms[1]
+	}
+	cmd.Env = append(cmd.Env, "BUILD_ANDROID="+android, "BUILD_WINDOWS="+windows)
 	output, err := cmd.CombinedOutput()
 	read := func(path string) string {
 		data, readErr := os.ReadFile(path)
@@ -67,6 +76,27 @@ exit 0
 		return string(data)
 	}
 	return string(output), err, read(calls), read(gitCalls), read(summary)
+}
+
+func TestSelectivePlatformReleasePreservesUnchangedOutputs(t *testing.T) {
+	sha := strings.Repeat("a", 40)
+	run := workflowRun(t, "Publish GitHub release")
+	for _, tc := range []struct {
+		name, android, windows, required, absent, latest string
+	}{
+		{"Windows only", "false", "true", "dist/windows/releases.win-x64.json", "dist/android/Tasks-137.apk", "false"},
+		{"Android only", "true", "false", "dist/android/Tasks-137.apk", "dist/windows/releases.win-x64.json", "true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err, calls, _, _ := runAndroidReleaseWorkflow(t, run, sha, "", "", sha+"\trefs/tags/v137\n", tc.android, tc.windows)
+			if err != nil {
+				t.Fatalf("selective publish failed: %v: %s", err, output)
+			}
+			if !strings.Contains(calls, tc.required) || strings.Contains(calls, tc.absent) || !strings.Contains(calls, "--latest="+tc.latest) {
+				t.Fatalf("wrong selective publication: %s", calls)
+			}
+		})
+	}
 }
 
 func TestAndroidWorkflowReleaseTagIdentity(t *testing.T) {
@@ -142,6 +172,10 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 		{"missing asset", strings.Repeat("a", 40), "missing", "true", true},
 		{"missing Windows installer", strings.Repeat("a", 40), "missing-windows-installer", "true", true},
 		{"missing Windows checksum", strings.Repeat("a", 40), "missing-windows-checksum", "true", true},
+		{"missing Velopack setup", strings.Repeat("a", 40), "missing-velopack-setup", "true", true},
+		{"missing Velopack checksum", strings.Repeat("a", 40), "missing-velopack-checksum", "true", true},
+		{"missing Velopack feed", strings.Repeat("a", 40), "missing-velopack-feed", "true", true},
+		{"missing Velopack package", strings.Repeat("a", 40), "missing-velopack-package", "true", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output, err, log, _, _ := runAndroidReleaseWorkflow(t, run, tc.remote, tc.failure, "", strings.Repeat("a", 40)+"	refs/tags/v137\n")
@@ -154,7 +188,7 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 				}
 				return
 			}
-			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json", "dist/windows/Tasks-Windows-137-Setup.exe", "dist/windows/Tasks-Windows-137-Setup.exe.sha256"} {
+			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json", "dist/windows/Tasks-Windows-137-Setup.exe", "dist/windows/Tasks-Windows-137-Setup.exe.sha256", "dist/windows/TasksWindows-win-x64-Setup.exe", "dist/windows/TasksWindows-win-x64-Setup.exe.sha256", "dist/windows/releases.win-x64.json", "dist/windows/TasksWindows-0.1.137-win-x64-full.nupkg"} {
 				if !strings.Contains(log, required) {
 					t.Errorf("release command missing %q: %s", required, log)
 				}

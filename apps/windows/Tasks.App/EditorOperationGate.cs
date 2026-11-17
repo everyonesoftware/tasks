@@ -7,12 +7,25 @@ internal sealed class EditorOperationGate
     public bool IsEditorOpen { get; private set; }
     public bool IsConnected { get; private set; }
     public bool IsSigningOut { get; private set; }
-    public bool CanSubmit => IsEditorOpen && IsConnected && !IsBusy;
+    public bool IsRestarting { get; private set; }
+    public bool CanSubmit => IsEditorOpen && IsConnected && !IsBusy && !IsRestarting;
+    public bool TryBeginRestart()
+    {
+        if (IsBusy || IsEditorOpen || IsSigningOut || IsRestarting) return false;
+        IsRestarting = true;
+        Changed?.Invoke();
+        return true;
+    }
+    public void EndRestart()
+    {
+        IsRestarting = false;
+        Changed?.Invoke();
+    }
     public event Action? Changed;
 
     public bool TryOpenEditor()
     {
-        if (IsEditorOpen || IsBusy || !IsConnected) return false;
+        if (IsRestarting || IsEditorOpen || IsBusy || !IsConnected) return false;
         IsEditorOpen = true;
         Changed?.Invoke();
         return true;
@@ -45,7 +58,7 @@ internal sealed class EditorOperationGate
 
     public async Task<bool> ExecuteAsync(Func<Task> action, bool allowDuringEditor = false, bool editorSubmission = false)
     {
-        if (IsBusy || (editorSubmission ? !CanSubmit : IsEditorOpen && !allowDuringEditor)) return false;
+        if (IsRestarting || IsBusy || (editorSubmission ? !CanSubmit : IsEditorOpen && !allowDuringEditor)) return false;
         IsBusy = true;
         try
         {

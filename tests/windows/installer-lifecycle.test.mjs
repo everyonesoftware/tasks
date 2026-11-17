@@ -73,12 +73,12 @@ test('evidence preflight rejects outside paths, missing runner temp and retained
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
 
-test('lifecycle source requires real Inno install, exact executable window, DWM pixels, graceful close and independent removal', () => {
+test('lifecycle requires guarded setup, real Velopack layout, rendered window and independent removal', () => {
   const source = readFileSync(script, 'utf8');
   for (const token of ["$env:GITHUB_ACTIONS -cne 'true'", 'RUNNER_TEMP', 'LocalApplicationData', 'EveryoneSoftware',
     'd65cbd98-53e5-47a0-8c65-fcc03f2df1ac', 'Registry64', 'Registry32', 'LocalMachine', 'CurrentUser',
     'Tasks.lnk', 'Programs\\Tasks', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR=', '/LOG=',
-    'unins000.exe', 'Tasks.exe', 'resources.pri', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'coreclr.dll', 'Tasks.dll',
+    'Update.exe', 'Tasks.exe', 'resources.pri', 'Microsoft.UI.Xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'coreclr.dll', 'Tasks.dll',
     'DwmGetWindowAttribute', 'CopyFromScreen', 'GetForegroundWindow', 'OpenInputDesktop', 'SwitchDesktop',
     'WM_CLOSE', 'screenshotSha256', 'Select-Object DisplayName, DisplayVersion, InstallLocation, UninstallString',
     'Assert-RemovedState', 'Invoke-CleanupAction', 'Remove-OwnedDirectory', 'System.Drawing']) {
@@ -95,7 +95,35 @@ test('lifecycle source requires real Inno install, exact executable window, DWM 
   assert.match(source, /\$summary.status -ne 'passed'/);
   assert.ok(source.indexOf('Save-WindowScreenshot $window') < source.indexOf('$summary.windowVerified = $true'));
   assert.ok(source.indexOf('Assert-RemovedState $remaining') < source.indexOf('$summary.uninstallVerified = $true'));
-  assert.doesNotMatch(source, /Velopack|testdriver|fixture.password|--silent|--installto/i);
+  for (const token of ['TasksWindows', 'current\\Tasks.exe', 'Update.exe', '--uninstall', '--silent', '--log', 'Invoke-LegacyRefusalGate', 'legacyRegistrationRefusalVerified', 'legacy-refusal', 'repeat-setup-refusal', 'reinstallRefusalVerified']) assert.ok(source.includes(token), token);
+  assert.doesNotMatch(source, /testdriver|fixture.password|--installto/i);
+});
+
+test('Start menu acceptance rejects wrong executable and nonempty launch arguments through the real gate predicate', { skip: !available }, () => {
+  run(extract + String.raw`
+$source = [IO.File]::ReadAllText($env:SCRIPT)
+$start = $source.IndexOf('    $links = @(Get-TaskLinks)')
+$end = $source.IndexOf('    if (Test-Path -LiteralPath $profile)', $start)
+if ($start -lt 0 -or $end -le $start) { throw 'Missing installed shortcut acceptance block' }
+$accept = [scriptblock]::Create($source.Substring($start, $end - $start))
+$installRoot = 'C:\owned fixture'; $appExe = $installRoot + '\current\Tasks.exe'
+$startMenu = [Environment]::GetFolderPath('StartMenu')
+function Get-TaskLinks { $fixtureLink }
+function Write-Json { param($Value, $Name) }
+$fixtureLink = [pscustomobject]@{ path = $startMenu + '\Programs\Tasks.lnk'; target = $appExe; arguments = '' }
+& $accept
+$fixtureLink.target = $installRoot + '\Update.exe'
+Assert-Throws { & $accept }
+$fixtureLink.target = $installRoot + '\other.exe'
+Assert-Throws { & $accept }
+$fixtureLink.target = $appExe
+$fixtureLink.arguments = '--uninstall'
+Assert-Throws { & $accept }
+$fixtureLink.arguments = ''
+$fixtureLink.path = $startMenu + '-sibling\Tasks.lnk'
+Assert-Throws { & $accept }
+`);
+  assert.match(readFileSync(script, 'utf8'), /arguments\s*=\s*\[string\]\$link\.Arguments/);
 });
 
 test('native interop C# compiles with actual Add-Type and a correctly sized DWM RECT', { skip: !available }, () => {

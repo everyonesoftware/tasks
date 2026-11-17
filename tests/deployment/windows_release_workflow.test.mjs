@@ -9,15 +9,24 @@ function job(name) {
   return match[1];
 }
 
-test('main push and manual releases require validated Android and native Windows jobs', () => {
+test('main push and manual releases gate only changed platforms and require selected jobs to succeed', () => {
   assert.match(workflow, /push:\n    branches: \[main\]\n  workflow_dispatch:/);
   assert.match(job('validate'), /if: github.ref == 'refs\/heads\/main'/);
   assert.match(job('validate'), /node --test tests\/deployment\/windows_release_workflow.test.mjs/);
   assert.match(job('validate'), /node --test tests\/windows\/\*\.test\.mjs/);
   for (const platform of ['android', 'windows']) assert.match(job(platform), /needs: validate/);
+  for (const platform of ['android', 'windows']) {
+    assert.ok(job(platform).includes(`if: needs.validate.outputs.build_${platform} == 'true'`));
+    assert.ok(job('validate').includes(`build_${platform}: \${{ steps.select.outputs.build_${platform} }}`));
+  }
+  assert.ok(job('validate').includes('node scripts/selective-builds.mjs'));
   const release = job('release');
   assert.match(release, /needs: \[validate, android, windows\]/);
-  assert.doesNotMatch(release, /if:|continue-on-error:/);
+  assert.match(release, /if:.*!cancelled\(\).*needs.validate.result == 'success'/);
+  for (const platform of ['android', 'windows']) {
+    assert.ok(release.includes(`needs.${platform}.result == 'success' || needs.${platform}.result == 'skipped'`));
+  }
+  assert.doesNotMatch(release, /continue-on-error:/);
   assert.equal((workflow.match(/contents: write/g) ?? []).length, 1);
   assert.match(release, /permissions:\n      contents: write/);
   assert.match(job('container'), /needs: validate/);
@@ -46,6 +55,7 @@ test('Windows uses pinned native toolchain and explicit shell contracts before i
   assert.doesNotMatch(artifact, /if:|evidence|\.log|\.png/);
   assert.match(artifact, /name: Tasks-windows-\$\{\{ needs.validate.outputs.version \}\}/);
   assert.match(artifact, /path: \|\n            dist\/windows\/Tasks-Windows-\$\{\{ needs.validate.outputs.version \}\}-Setup.exe\n            dist\/windows\/Tasks-Windows-\$\{\{ needs.validate.outputs.version \}\}-Setup.exe.sha256/);
+  for (const asset of ['TasksWindows-win-x64-Setup.exe', 'TasksWindows-win-x64-Setup.exe.sha256', 'TasksWindows-0.1.${{ needs.validate.outputs.version }}-win-x64-full.nupkg', 'releases.win-x64.json']) assert.ok(artifact.includes('dist/windows/' + asset), asset);
   assert.match(artifact, /if-no-files-found: error/);
 });
 
@@ -55,6 +65,7 @@ test('release downloads both platform inventories into separate paths', () => {
   assert.equal((release.match(/digest-mismatch: error/g) ?? []).length, 2);
   for (const platform of ['android', 'windows']) {
     assert.match(release, new RegExp(`name: Tasks-${platform}-\\$\\{\\{ needs.validate.outputs.version \\}\\}\\n          path: dist/${platform}`));
+    assert.ok(release.includes(`if: needs.validate.outputs.build_${platform} == 'true'`));
   }
   assert.match(release, /fetch-depth: 0/);
   assert.match(release, /DAYMARK_VERSION: \$\{\{ needs.validate.outputs.version \}\}/);
