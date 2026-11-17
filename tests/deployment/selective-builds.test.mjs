@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import * as selector from '../../scripts/selective-builds.mjs';
 import { readFileSync } from 'node:fs';
 import { selectBuilds } from '../../scripts/selective-builds.mjs';
 
 function fixture(t) {
-  const root = mkdtempSync(join(process.env.TMPDIR || '/opt/data/cache/scratch', 'tasks-selection-'));
+  const root = mkdtempSync(join(process.env.TMPDIR || tmpdir(), 'tasks-selection-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
   git('init', '-q'); git('config', 'user.email', 'fixture@example.invalid'); git('config', 'user.name', 'Fixture');
