@@ -65,6 +65,12 @@ test('native publish embeds the source-bound shared Windows version', () => {
   assert.ok(script.includes('-p:IncludeSourceRevisionInInformationalVersion=false'), 'The source SHA must not be appended twice by the SDK');
 });
 
+test('Velopack packing retains the complete publish inventory for byte-for-byte validation', () => {
+  const script = source('scripts/build-windows-installer.ps1');
+  assert.ok(script.includes("'--noDefaultExclude'"), 'Pinned vpk otherwise drops createdump.exe and other built-in excluded files');
+  assert.ok(script.includes("'--exclude', '(?!)'"), 'Override the default PDB exclusion instead of weakening package completeness checks');
+});
+
 test('the actual packaging entrypoint refuses accidental unsigned builds and non-Windows execution', t => {
   if (process.platform === 'win32') { t.skip('Linux fail-closed gate is a non-Windows check'); return; }
   const pwsh = process.env.PWSH || '/opt/data/tools/powershell-7.5.4/pwsh';

@@ -35,7 +35,7 @@ try {
     $packArguments = @('tool', 'run', 'vpk', '--', '[win]', 'pack', '--packId', 'TasksWindows', '--packVersion', $info.version,
         '--packDir', $publish, '--mainExe', 'Tasks.exe', '--packTitle', 'Tasks', '--packAuthors', 'Everyone Software',
         '--runtime', 'win-x64', '--channel', 'win-x64', '--framework', 'vcredist143-x64', '--noPortable', '--delta', 'None',
-        '--shortcuts', 'StartMenuRoot', '--outputDir', $releases, '--yes', '--skip-updates')
+        '--shortcuts', 'StartMenuRoot', '--outputDir', $releases, '--noDefaultExclude', '--exclude', '(?!)', '--yes', '--skip-updates')
     & dotnet @packArguments
     if ($LASTEXITCODE -ne 0) { throw 'Velopack packaging failed.' }
     & (Join-Path $PSScriptRoot 'validate-windows-nupkg.ps1') -PackagePath (Join-Path $releases "TasksWindows-$($info.version)-win-x64-full.nupkg") -PublishDirectory $publish -Version $info.version
