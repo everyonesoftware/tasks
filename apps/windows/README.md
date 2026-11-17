@@ -13,6 +13,7 @@ Native C#/WinUI 3 client, not a WebView. This is the first implementation slice 
 - Settings shows the running application's file version/build, manual GitHub update checks, last-check time and expandable plain-text release notes. A newer Windows installer opens in the default browser; run the downloaded installer yourself. No background checks, automatic downloads or automatic installation.
 - Refresh on activation and every 30 seconds. Task payloads and suggestion ordering exist only in memory; disconnected/signed-out views clear them.
 - One endpoint/account/session envelope encrypted for the current Windows user using `DataProtectionProvider("LOCAL=user")`, then committed with same-directory atomic replacement. No password storage. No plaintext task cache or write queue.
+- Startup shows a neutral session-restoration view until the protected session, remote validation and initial task fetch resolve. Missing/expired sessions show sign-in; restoration failures show a connection screen whose Reconnect action retries the entire restore. Sign out remains available to clear a saved session after failure.
 
 The native client's navigation uses the existing product's Today, Upcoming, Routines, and Settings routes rather than introducing a full-history endpoint. Completed today and Undo appear within Today.
 
@@ -118,7 +119,7 @@ Use a disposable Tasks API/database and a dedicated test Windows user, never per
 1. Launch, native theme resources, window controls and resize at restored/maximized sizes; compare against Familiar.
 2. Sign in over trusted HTTPS. A release rejects arbitrary HTTP, embedded credentials, non-origin URLs, and redirects. Loopback HTTP is development-only and visibly warned about.
 3. Create a real task, select another waiting task, defer with Not now, complete and undo; independently read back each mutation from the API.
-4. Close/reopen and restore the same account from the actual LOCAL=user-protected envelope; ensure plaintext credentials/tasks are absent from local files.
+4. Close/reopen and restore the same account from the actual LOCAL=user-protected envelope; ensure plaintext credentials/tasks are absent from local files. Check that slow restoration never flashes sign-in or connection errors, no saved/expired sessions resolve to sign-in, and offline startup resolves to Connection required with working Reconnect and Sign out actions.
 5. Disconnect while the app is open: clear task content, disable mutations, reconnect, and verify state. Test session expiry and offline sign-out, including the unconfirmed remote-revocation notice.
 6. Cancel and fail a task creation: preserve the draft while the dialog is open and never claim the write succeeded. Escape must not dismiss an in-flight write.
 7. Sign out, restart, and confirm no account/task access. Verify other Windows users cannot decrypt the session.

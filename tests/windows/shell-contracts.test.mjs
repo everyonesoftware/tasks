@@ -9,7 +9,7 @@ const read = name => {
   return readFileSync(path, 'utf8');
 };
 
-test('Familiar native shell starts signed out, without sample task data', () => {
+test('Familiar native shell starts without task data while restoring authentication', () => {
   const xaml = read('Tasks.App/Shell.xaml');
   for (const name of ['SignInPanel', 'ServerUrl', 'Username', 'Password', 'Workspace', 'CurrentTitle', 'QueueList', 'DailyProgress', 'ConnectionPanel']) {
     assert.ok(xaml.includes(`x:Name="${name}"`), `Missing native control ${name}`);
@@ -93,8 +93,8 @@ test('idle editor is separate from network operations and both monitor triggers 
 test('failed credential deletion exposes a sign-out retry instead of an unusable sign-in form', () => {
   const code = read('Tasks.App/MainWindow.cs');
   assert.match(code, /client\.NeedsSignOutRetry/);
-  assert.match(code, /Visible\(client\.Session is null && !client\.NeedsSignOutRetry\)/);
-  assert.match(code, /Visible\(client\.NeedsSignOutRetry \|\|/);
+  assert.match(code, /SignInPanel"\)\.Visibility = Visible\(!startup.IsRestoring && !startup.NeedsRetry && client\.Session is null && !client\.NeedsSignOutRetry\)/);
+  assert.match(code, /ConnectionPanel"\)\.Visibility = Visible\(!startup.IsRestoring && \(startup.NeedsRetry \|\| client\.NeedsSignOutRetry \|\|/);
   assert.match(code, /Find<Button>\("RetryConnection"\)\.Visibility = Visible\(!client\.NeedsSignOutRetry\)/);
 });
 

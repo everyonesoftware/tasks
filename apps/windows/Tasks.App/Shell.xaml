@@ -24,7 +24,15 @@
   <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
   <Border x:Name="TitleBar" Background="#202B30" Height="32" />
 
-  <ScrollViewer x:Name="SignInPanel" Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+  <Grid x:Name="StartupPanel" Grid.Row="1">
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" Margin="28">
+      <TextBlock Text="◴ Tasks" FontFamily="Georgia" FontSize="40" Foreground="{StaticResource Ink}" />
+      <ProgressBar IsIndeterminate="True" Width="240" Height="3" Foreground="{StaticResource Mint}" />
+      <TextBlock Text="Restoring your session…" Foreground="{StaticResource Muted}" AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+  </Grid>
+
+  <ScrollViewer x:Name="SignInPanel" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
     <StackPanel Width="390" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,64" Spacing="18">
       <TextBlock Text="◴ Tasks" FontFamily="Georgia" FontSize="40" Foreground="{StaticResource Ink}" />
       <TextBlock Text="Connect to your workspace" FontSize="22" FontWeight="SemiBold" Margin="0,12,0,0" />

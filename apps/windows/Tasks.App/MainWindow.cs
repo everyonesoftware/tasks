@@ -24,6 +24,7 @@ internal sealed class MainWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherQueueTimer refreshTimer;
     private bool initialized;
+    private readonly SessionStartup startup = new();
     private readonly EditorOperationGate operations = new();
     private bool busy => operations.IsBusy;
     private bool closed;
@@ -57,7 +58,7 @@ internal sealed class MainWindow : Window
         {
             if (initialized) return;
             initialized = true;
-            await RunAsync(async ct => { await client.RestoreAsync(Today, ct); });
+            await RunAsync(RestoreSessionAsync);
             if (!closed) refreshTimer.Start();
         };
         Activated += async (_, args) =>
@@ -120,7 +121,8 @@ internal sealed class MainWindow : Window
         };
         Find<Button>("AddTask").Click += async (_, _) => await AddAsync();
         Find<Button>("Refresh").Click += async (_, _) => await RunAsync(ct => client.RefreshAsync(Today, ct), "Connection verified.");
-        Find<Button>("RetryConnection").Click += async (_, _) => await RunAsync(ct => client.RefreshAsync(Today, ct), "Reconnected.");
+        Find<Button>("RetryConnection").Click += async (_, _) => await RunAsync(
+            ct => startup.NeedsRetry ? RestoreSessionAsync(ct) : client.RefreshAsync(Today, ct));
         Find<Button>("SignOut").Click += async (_, _) => await SignOutAsync();
         Find<Button>("OfflineSignOut").Click += async (_, _) => await SignOutAsync();
         Find<Button>("CheckUpdates").Click += async (_, _) => await CheckUpdatesAsync();
@@ -207,6 +209,13 @@ internal sealed class MainWindow : Window
         await RunAsync(ct => client.SignInAsync(endpoint, username, password, Today, ct));
     }
 
+    private Task RestoreSessionAsync(CancellationToken ct)
+    {
+        var restoring = startup.RestoreAsync(() => client.RestoreAsync(Today, ct));
+        Render();
+        return restoring;
+    }
+
     private Task SignOutAsync() => RunAsync(async ct =>
     {
         operations.BeginSignOut();
@@ -216,7 +225,11 @@ internal sealed class MainWindow : Window
             await client.SignOutAsync(ct);
             page = "today";
         }
-        finally { operations.EndSignOut(); }
+        finally
+        {
+            if (!client.NeedsSignOutRetry) startup.SignedOut();
+            operations.EndSignOut();
+        }
     }, "Signed out on this device.");
 
     private async Task AddAsync()
@@ -301,10 +314,11 @@ internal sealed class MainWindow : Window
         RenderUpdates();
         var connected = client.IsConnected && client.State is not null && !operations.IsSigningOut;
         operations.SetConnected(connected);
-        Find<ScrollViewer>("SignInPanel").Visibility = Visible(client.Session is null && !client.NeedsSignOutRetry);
-        Find<Grid>("ConnectionPanel").Visibility = Visible(client.NeedsSignOutRetry || client.Session is not null && !connected);
+        Find<Grid>("StartupPanel").Visibility = Visible(startup.IsRestoring);
+        Find<ScrollViewer>("SignInPanel").Visibility = Visible(!startup.IsRestoring && !startup.NeedsRetry && client.Session is null && !client.NeedsSignOutRetry);
+        Find<Grid>("ConnectionPanel").Visibility = Visible(!startup.IsRestoring && (startup.NeedsRetry || client.NeedsSignOutRetry || client.Session is not null && !connected));
         Find<Button>("RetryConnection").Visibility = Visible(!client.NeedsSignOutRetry);
-        Find<Grid>("Workspace").Visibility = Visible(connected);
+        Find<Grid>("Workspace").Visibility = Visible(!startup.IsRestoring && connected);
         Find<TextBlock>("OfflineEndpoint").Text = client.Session is { } profile ? profile.Endpoint + "\n" + profile.Username : string.Empty;
         // Always clear detached native views too; hidden controls are not a task cache.
         Find<StackPanel>("QueueList").Children.Clear();

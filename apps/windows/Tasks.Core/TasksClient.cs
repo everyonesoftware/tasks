@@ -94,7 +94,7 @@ public sealed class TasksClient : IDisposable
             candidate = new SessionProfile(endpoint, login.Username, login.Token, login.ExpiresAt);
             var state = await ReadState(candidate, date, cancellationToken).ConfigureAwait(false);
             await vault.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
-            State = null; Session = candidate; State = state;
+            State = null; Session = candidate; State = state; pendingRevocation = null;
             candidate = null;
         }
         catch (OperationCanceledException) { throw new OperationCanceledException("The request was cancelled.", cancellationToken); }
@@ -116,15 +116,17 @@ public sealed class TasksClient : IDisposable
             if (saved is null) return false;
             ValidateEndpoint(saved.Endpoint);
             if (saved.ExpiresAt <= DateTimeOffset.UtcNow) throw new TasksClientException(true);
+            // Retain a revocation-only handle, never task access, if restoration fails.
+            pendingRevocation = saved;
             var valid = await Request<SessionResponse>(saved, HttpMethod.Get, "/api/auth/session", null, cancellationToken).ConfigureAwait(false);
             if (valid is null || valid.Username != saved.Username || valid.ExpiresAt <= DateTimeOffset.UtcNow) throw new TasksClientException(true);
             var state = await ReadState(saved, date, cancellationToken).ConfigureAwait(false);
-            Session = saved; State = state;
+            Session = saved; State = state; pendingRevocation = null;
             return true;
         }
         catch (TasksClientException e) when (e.SessionExpired)
         {
-            Session = null; State = null;
+            Session = null; State = null; pendingRevocation = null;
             try { await vault.ClearAsync(CancellationToken.None).ConfigureAwait(false); } catch { throw new TasksClientException(); }
             throw;
         }
