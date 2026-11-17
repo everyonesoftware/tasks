@@ -99,14 +99,15 @@
             <StackPanel Spacing="14">
               <TextBlock Text="Version &amp; updates" FontSize="20" FontWeight="SemiBold" />
               <TextBlock x:Name="InstalledVersion" Foreground="{StaticResource Muted}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-              <TextBlock x:Name="UpdateStatus" Text="Check GitHub for the latest Windows release." TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+              <TextBlock x:Name="UpdateStatus" Text="Check for Windows updates when you choose." TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
               <ProgressBar x:Name="UpdateProgress" IsIndeterminate="True" Visibility="Collapsed" Height="3" Foreground="{StaticResource Mint}" />
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <Button x:Name="CheckUpdates" Content="Check for updates" />
                 <Button x:Name="DownloadUpdate" Content="Download update" Visibility="Collapsed" Background="{StaticResource Mint}" Foreground="#1F392B" />
+                <Button x:Name="RestartUpdate" Content="Restart and install" Visibility="Collapsed" />
               </StackPanel>
               <TextBlock x:Name="LastUpdateCheck" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
-              <TextBlock Text="Downloads open in your browser. Run the Windows installer yourself to update; nothing is downloaded or installed automatically." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
+              <TextBlock Text="Download updates here, then choose Restart and install. No background download or automatic installation. Finish any task edits before restarting." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
               <Expander x:Name="ReleaseNotesPanel" Header="Release notes" Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <ScrollViewer MaxHeight="260" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                   <TextBlock x:Name="ReleaseNotes" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{StaticResource Muted}" />

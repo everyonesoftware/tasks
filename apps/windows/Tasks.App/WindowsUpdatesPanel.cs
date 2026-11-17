@@ -25,13 +25,7 @@ internal sealed class WindowsUpdatesPanel : IDisposable
         status = (TextBlock)root.FindName("UpdateStatus");
         progress = (ProgressBar)root.FindName("UpdateProgress");
         lastCheck = (TextBlock)root.FindName("LastUpdateCheck");
-        restart = new Button { Name = "RestartUpdate", Content = "Restart and install", Visibility = Visibility.Collapsed };
-        ((StackPanel)download.Parent).Children.Add(restart);
-        // Replace the retired browser instructions without changing the shared runtime-XAML shell.
-        var container = (StackPanel)status.Parent;
-        var instructions = container.Children.OfType<TextBlock>().Last(t => string.IsNullOrEmpty(t.Name));
-        instructions.Text = "Download updates here, then choose Restart and install. No background download or automatic installation. Finish any task edits before restarting.";
-        ((Expander)root.FindName("ReleaseNotesPanel")).Visibility = Visibility.Collapsed;
+        restart = (Button)root.FindName("RestartUpdate");
     }
     public void Bind(WindowsUpdateController controller, Func<bool> taskOperationBlocked)
     {

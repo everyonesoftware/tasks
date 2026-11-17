@@ -18,10 +18,19 @@ test('Settings uses integrated explicit Check -> Download -> Restart with real v
   const panel = read('Tasks.App/WindowsUpdatesPanel.cs');
   assert.match(panel, /controller.CheckAsync\(\)/);
   assert.match(panel, /controller.DownloadAsync\(\)/);
-  assert.match(panel, /Restart and install/);
+  assert.match(read('Tasks.App/Shell.xaml'), /x:Name="RestartUpdate"[^>]*Content="Restart and install"/);
   assert.match(panel, /state.Progress/);
   assert.match(panel, /dispatcher.TryEnqueue/);
   assert.match(panel, /controller.Status/);
+});
+
+test('update panel binds named controls without traversing unloaded native parents', () => {
+  const panel = read('Tasks.App/WindowsUpdatesPanel.cs');
+  assert.doesNotMatch(panel, /\.Parent\b|\.Children\.Add\(|\.OfType<TextBlock>\(\)\.Last/);
+  assert.match(panel, /root.FindName\("RestartUpdate"\)/);
+  const shell = read('Tasks.App/Shell.xaml');
+  assert.match(shell, /x:Name="RestartUpdate"[^>]*Visibility="Collapsed"/);
+  assert.doesNotMatch(shell, /Downloads open in your browser/);
 });
 
 test('restart holds task operation gate through protected session readback and apply', () => {
