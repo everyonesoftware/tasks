@@ -248,8 +248,36 @@ jobs:
       - name: Build Windows installer
         run: pwsh ./scripts/build-windows-installer.ps1 -BuildNumber $env:DAYMARK_VERSION -AllowUnsigned
       - name: Test Windows installer lifecycle
+        id: lifecycle
         timeout-minutes: 5
         run: pwsh ./scripts/test-windows-installer.ps1 -InstallerPath "dist/windows/Tasks-Windows-$env:DAYMARK_VERSION-Setup.exe" -EvidenceDirectory "$env:RUNNER_TEMP/tasks-windows-evidence"
+      - name: Diagnose native startup failure
+        if: failure() && steps.lifecycle.outcome == 'failure'
+        timeout-minutes: 4
+        env:
+          WINAPP_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'tasks-windows-evidence'
+          $exitFile = Join-Path $evidence 'app-exit.json'
+          if (Test-Path -LiteralPath $exitFile) {
+            $exitInfo = Get-Content -LiteralPath $exitFile -Raw | ConvertFrom-Json
+            if ($exitInfo.hasExited -and $null -ne $exitInfo.exitCode -and $exitInfo.exitCode -ne 0) {
+              $toolDirectory = Join-Path $env:RUNNER_TEMP 'winapp-0.8.0'
+              $archive = Join-Path $env:RUNNER_TEMP 'winappcli-x64.zip'
+              Invoke-WebRequest 'https://github.com/microsoft/winappCli/releases/download/v0.8.0/winappcli-x64.zip' -OutFile $archive
+              if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '67a8e1d39421a5ef5309c7017327c6a70ea6215a0e56e47ec22a7e9ec3b914e6') {
+                throw 'WinApp diagnostic tool checksum mismatch'
+              }
+              Expand-Archive $archive -DestinationPath $toolDirectory
+              try {
+                & "$toolDirectory/winapp.exe" run apps/windows/Tasks.App/Tasks.App.csproj --no-build --configuration Release --debug-output --symbols 2>&1 | Tee-Object (Join-Path $evidence 'native-debugger.txt')
+              } finally {
+                $logs = Join-Path $env:TEMP 'winapp-dumps'
+                if (Test-Path $logs) { Copy-Item "$logs/*.log" $evidence -ErrorAction Continue }
+              }
+            }
+          }
       - name: Retain Windows lifecycle evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

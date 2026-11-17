@@ -59,6 +59,20 @@ test('Windows uses pinned native toolchain and explicit shell contracts before i
   assert.match(artifact, /if-no-files-found: error/);
 });
 
+test('native startup diagnostics run only after failed lifecycle and cannot replace acceptance', () => {
+  const windows = job('windows');
+  const diagnostic = windows.slice(windows.indexOf('- name: Diagnose native startup failure'), windows.indexOf('- name: Retain Windows lifecycle evidence'));
+  assert.ok(diagnostic.startsWith('- name: Diagnose native startup failure'));
+  assert.ok(diagnostic.includes("if: failure() && steps.lifecycle.outcome == 'failure'"));
+  assert.ok(diagnostic.includes('timeout-minutes: 4'));
+  assert.ok(diagnostic.includes('app-exit.json'));
+  assert.ok(diagnostic.includes('67a8e1d39421a5ef5309c7017327c6a70ea6215a0e56e47ec22a7e9ec3b914e6'));
+  assert.ok(diagnostic.includes('--debug-output --symbols'));
+  assert.ok(diagnostic.includes('native-debugger.txt'));
+  assert.ok(diagnostic.includes('WINAPP_CLI_TELEMETRY_OPTOUT'));
+  assert.doesNotMatch(diagnostic, /continue-on-error:|exit 0/);
+});
+
 test('release downloads both platform inventories into separate paths', () => {
   const release = job('release');
   assert.equal((release.match(/actions\/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333/g) ?? []).length, 2);
