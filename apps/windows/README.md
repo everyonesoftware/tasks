@@ -7,19 +7,19 @@ Native C#/WinUI 3 client, not a WebView. This is the first implementation slice 
 - Slate/mint Windows workspace, left navigation, Current task, daily progress, queue selection, Not now, and bottom-right Mark done.
 - App-colored draggable title area with native caption controls, embedded/runtime Tasks icon, and labeled navigation icons. Ctrl+N opens Add task without a whole-window shortcut tooltip. These shell changes still require native Windows rendering/hover/taskbar acceptance.
 - Configurable server origin and existing-account sign-in. First-user provisioning remains the server's web welcome flow.
-- Real authenticated task state, completion/undo, and task creation with repeat, interval, start date, category, priority, and notes.
-- Upcoming and Routines views (read-only in this slice).
+- Real authenticated task state, completion/undo, task creation and editing with repeat, interval, start date, category, priority, and notes. Three-dot menus provide Edit and confirmed Archive (history is preserved), including the current task menu alongside Not now.
+- Task-row action popups: Make current / Mark done for eligible Today occurrences, Undo for completed Today occurrences. Future occurrences cannot be focused or completed early. Upcoming and Routines include accessible task options.
 - Connection settings, test/reconnect, and local sign-out. There is deliberately no in-place account-switch form; sign out before changing accounts.
 - Settings shows the running application's file version/build and uses the same Velopack update system as Windows Music: **Check for updates → Download with progress → Restart and install**. Each action is user-initiated; starting the app does not apply a staged update.
 - Refresh on activation and every 30 seconds. Task payloads and suggestion ordering exist only in memory; disconnected/signed-out views clear them.
 - One endpoint/account/session envelope encrypted for the current Windows user using `DataProtectionProvider("LOCAL=user")`, then committed with same-directory atomic replacement. No password storage. No plaintext task cache or write queue.
 - Startup shows a neutral session-restoration view until the protected session, remote validation and initial task fetch resolve. Missing/expired sessions show sign-in; restoration failures show a connection screen whose Reconnect action retries the entire restore. Sign out remains available to clear a saved session after failure.
 
-The native client's navigation uses the existing product's Today, Upcoming, Routines, and Settings routes rather than introducing a full-history endpoint. Completed today and Undo appear within Today.
+The native client's navigation uses the existing product's Today, Upcoming, Routines, and Settings routes rather than introducing a full-history endpoint. Completed today and Undo appear within Today. Completed today is collapsed initially, displays its count, and keeps its expansion choice across normal refresh/navigation for the same account and date. Sign-out/account changes and local-date rollover reset it; this preference and task data remain memory-only.
 
 ## Not included yet
 
-Task editing/archiving, full-history browsing, unattended updating, and tray/background behavior. Do not mistake the existing Android release manifest for a Windows update feed. The Windows updater requires its own Velopack feed and full package in the combined GitHub release.
+Full-history browsing, unattended updating, and tray/background behavior. Do not mistake the existing Android release manifest for a Windows update feed. The Windows updater requires its own Velopack feed and full package in the combined GitHub release.
 
 ## Version and Windows Music-style updates
 
@@ -151,10 +151,10 @@ Use a disposable Tasks API/database and a dedicated test Windows user, never per
 
 1. Launch, native theme resources, window controls and resize at restored/maximized sizes; compare against Familiar.
 2. Sign in over trusted HTTPS. A release rejects arbitrary HTTP, embedded credentials, non-origin URLs, and redirects. Loopback HTTP is development-only and visibly warned about.
-3. Create a real task, select another waiting task, defer with Not now, complete and undo; independently read back each mutation from the API.
+3. Create a real task; activate a waiting row with mouse/keyboard and choose Make current or Mark done; defer with Not now; expand/collapse the counted Completed today section and choose Undo from a row popup. Confirm refresh/navigation preserve expansion and account/date changes reset it. Future rows must never offer early focus/completion. Edit all fields through each view’s three-dot menu, cancel an archive, then confirm an archive and independently read back its preserved history from the API.
 4. Close/reopen and restore the same account from the actual LOCAL=user-protected envelope; ensure plaintext credentials/tasks are absent from local files. Check that slow restoration never flashes sign-in or connection errors, no saved/expired sessions resolve to sign-in, and offline startup resolves to Connection required with working Reconnect and Sign out actions.
 5. Disconnect while the app is open: clear task content, disable mutations, reconnect, and verify state. Test session expiry and offline sign-out, including the unconfirmed remote-revocation notice.
-6. Cancel and fail a task creation: preserve the draft while the dialog is open and never claim the write succeeded. Escape must not dismiss an in-flight write.
+6. Cancel and fail task creation/editing: preserve the draft while the dialog is open and never claim the write succeeded. Let activation/periodic refresh run during an idle draft; disconnect and verify submission disables without losing typed fields. Escape must not dismiss an in-flight write. Exercise archive confirmation and disconnected/stale popup guards. These interaction/rendering checks require native Windows; source contracts and Linux compilation do not establish runtime acceptance.
 7. Sign out, restart, and confirm no account/task access. Verify other Windows users cannot decrypt the session.
 8. In an isolated Windows account, verify the one-time legacy uninstall/new setup transition preserves the protected session, then perform a genuine newer-package Check → Download → Restart/install and read the installed version/session back. Confirm launch never auto-applies staged bytes, failed downloads are retryable, open drafts/mutations block restart, and uninstall removes installation/registration/shortcuts without deleting the protected session.
 

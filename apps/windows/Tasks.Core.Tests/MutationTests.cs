@@ -37,6 +37,9 @@ public class MutationTests
         using var json = JsonDocument.Parse(body!); Assert.Equal("a", json.RootElement.GetProperty("taskId").GetString()); Assert.Equal("2026-11-15", json.RootElement.GetProperty("date").GetString());
         Assert.Equal(undo ? "/api/occurrences/undo" : "/api/occurrences/complete", h.Paths[^1]);
         h.Respond = (_, _) => Task.FromResult(ClientTests.Reply("secret", HttpStatusCode.InternalServerError));
-        await Assert.ThrowsAsync<TasksClientException>(() => c.CompleteAsync(occurrence, ClientTests.Date)); Assert.Null(c.State); Assert.False(c.IsConnected);
+        var latest = c.State.Today[0];
+        var requests = h.Paths.Count;
+        await Assert.ThrowsAsync<TasksClientException>(() => latest.Completed ? c.UndoAsync(latest, ClientTests.Date) : c.CompleteAsync(latest, ClientTests.Date));
+        Assert.Equal(requests + 1, h.Paths.Count); Assert.Null(c.State); Assert.False(c.IsConnected);
     }
 }

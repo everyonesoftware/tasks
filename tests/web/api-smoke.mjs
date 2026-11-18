@@ -50,9 +50,10 @@ try {
   socket=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
   let sequence=0;
-  const pending=new Map();
+  const pending=new Map(), runtimeErrors=[];
   socket.addEventListener('message',event=>{
     const reply=JSON.parse(event.data);
+    if(reply.method==='Runtime.exceptionThrown') runtimeErrors.push(reply.params.exceptionDetails.text);
     const entry=pending.get(reply.id);
     if(!entry)return;
     clearTimeout(entry.timer);pending.delete(reply.id);
@@ -61,7 +62,7 @@ try {
   function cdp(method,params={}) {
     const id=++sequence;
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},20000);
+      const timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method+' after '+checks.at(-1)));},20000);
       pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));
     });
   }
@@ -78,7 +79,30 @@ try {
   async function login(username,passphrase=password) {
     await js(`document.querySelector('#username').value=${JSON.stringify(username)};document.querySelector('#password').value=${JSON.stringify(passphrase)};document.querySelector('#auth-form').requestSubmit()`);
   }
-  await cdp('Network.enable');await navigate();
+  async function currentTitlePopup(label) {
+    assert.equal(await js("!!document.querySelector('.focus-card h2 button:not(:disabled)')"),true,`${label}: current title is an accessible button`);
+    const title=await js("document.querySelector('.focus-card h2').textContent");
+    for (const key of [null,'Enter',' ']) {
+      await js("document.querySelector('.focus-card h2 button').focus()");
+      if (key === null) {
+        const point=await js("(()=>{const r=document.querySelector('.focus-card h2 button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
+        await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
+        await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1});
+      } else {
+        const code=key==='Enter'?'Enter':'Space', windowsVirtualKeyCode=key==='Enter'?13:32;
+        await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode,text:key==='Enter'?'\r':' ',unmodifiedText:key==='Enter'?'\r':' '});
+        await cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode});
+      }
+      assert.equal(await js("document.querySelector('#occurrence-dialog').open"),true,`${label}: ${key === null ? 'pointer' : key === ' ' ? 'Space' : key} opens popup`);
+      assert.equal(await js("document.querySelector('#occurrence-title').textContent"),title);
+      assert.equal(await js("document.querySelector('.focus-card h2').textContent"),title,'activation does not change current');
+      assert.equal(await js("document.querySelector('[data-make-current]').hidden || document.querySelector('#occurrence-complete').hidden"),false,'current popup exposes Make current and Mark done');
+      await js("document.querySelector('[data-close=occurrence-dialog]').click()");
+      await wait("document.activeElement.matches('.focus-card h2 button')");
+    }
+    checks.push(`${label}: current title opens existing popup by pointer, Enter and Space; focus restored`);
+  }
+  await cdp('Network.enable');await cdp('Runtime.enable');await navigate();
   assert.equal(await js('document.title'), 'Tasks');
   assert.equal(await js("document.querySelector('.brand').getAttribute('aria-label')"), 'Tasks home');
   assert.equal(await js("document.querySelector('#signin-heading').textContent"), 'Sign in to Tasks');
@@ -91,16 +115,97 @@ try {
   assert.ok(!(await js('document.cookie')).includes('daymark_session'));
   assert.ok(await js('localStorage.length===0 && sessionStorage.length===0'));
   checks.push('HttpOnly cookie, XSS escaping and no browser task/credential storage');
-  await js("document.querySelector('[data-complete]').click()");await wait("document.querySelector('progress').value===1");
+  await currentTitlePopup('Multiple tasks');
+  const initialCurrent=await js("document.querySelector('.focus-card h2').textContent");
+  const pickedTitle=await js("document.querySelector('[data-pick] strong').textContent");
+  await js("document.querySelector('[data-pick]').click()");
+  assert.equal(await js("!!document.querySelector('#occurrence-dialog[open]')"),true,'queue click opens task popup');
+  assert.equal(await js("document.querySelector('.focus-card h2').textContent"),initialCurrent,'opening popup does not change current');
+  await js("document.querySelector('[data-make-current]').click()");
+  assert.equal(await js("document.querySelector('.focus-card h2').textContent"),pickedTitle);
+  await js("document.querySelector('[data-pick]').click();document.querySelector('#occurrence-complete').click()");await wait("document.querySelector('progress').value===1");
+  checks.push('queue popup opens without selecting; explicit Make current and Mark done');
   assert.equal((await api('/api/state',undefined,token)).progress.completed,1);
-  await js("document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
+  await js("document.querySelector('#completed').open=true");
+  await delay(100);
+  await js("document.querySelector('[data-view=routines]').click();document.querySelector('[data-view=today]').click()");
+  assert.equal(await js("document.querySelector('#completed').open"),true,'explicit completed expansion survives navigation');
+  await js("window.dispatchEvent(new Event('focus'))");await wait("document.querySelector('#view').getAttribute('aria-busy')==='false'");
+  assert.equal(await js("document.querySelector('#completed').open"),true,'expansion survives refresh');
+  await js("document.querySelector('#completed [data-pick]').click()");
+  assert.equal(await js("document.querySelector('[data-make-current]').hidden"),true);
+  assert.equal(await js("document.querySelector('#occurrence-complete').textContent"),'Undo');
+  await js("document.querySelector('#occurrence-complete').click()");await wait("document.querySelector('progress').value===0");
+  checks.push('completed popup Undo without Make current; expansion survives refresh/navigation');
   assert.equal((await api('/api/state',undefined,token)).progress.completed,0);
+  assert.equal(await js("(()=>{const item=document.querySelector('.queue-item');const row=item.querySelector('.queue-row').getBoundingClientRect(), menu=item.querySelector('.menu-trigger').getBoundingClientRect();return menu.top>=row.top && menu.bottom<=row.bottom})()"),true,'queue menu sits alongside row, not below');
+  await js("document.querySelector('[data-pick]').closest('.queue-item').querySelector('[data-menu-trigger]').click()");
+  assert.equal(await js("document.activeElement.textContent"),'Edit task');
+  await js("document.activeElement.click();document.querySelector('#title').value='Edited from queue';document.querySelector('#notes').value='Persisted queue notes';document.querySelector('#task-form').requestSubmit()");
+  await wait("document.querySelector('#notice').textContent==='Task updated.'");
+  assert.ok((await api('/api/state',undefined,token)).tasks.some(t=>t.title==='Edited from queue' && t.notes==='Persisted queue notes'));
+  assert.equal(await js("!!document.querySelector('button button')"),false);
+  checks.push('accessible queue menu reuses editor and persists title/notes without nested buttons');
+  // Revalidate an already-open popup after another client completes its occurrence.
+  const stale=await js("document.querySelector('#view [data-pick]').dataset.pick");
+  await js("document.querySelector('#view [data-pick]').click()");
+  const staleRow=(await api('/api/state',undefined,token)).today.find(row=>row.occurrenceId===stale);
+  await api('/api/occurrences/complete',{taskId:staleRow.taskId,dueDate:staleRow.dueDate,date:today},token);
+  await js("window.dispatchEvent(new Event('focus'))");
+  await wait("document.querySelector('#occurrence-complete').textContent==='Undo'");
+  assert.equal(await js("document.querySelector('[data-make-current]').hidden"),true);
+  await js("document.querySelector('#occurrence-complete').click()");await wait("document.querySelector('progress').value===0");
+  const tomorrowDate=new Date(now);tomorrowDate.setDate(tomorrowDate.getDate()+1);
+  const tomorrow=`${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth()+1).padStart(2,'0')}-${String(tomorrowDate.getDate()).padStart(2,'0')}`;
+  await api('/api/tasks',{title:'Future only',notes:'Not early',category:'Testing',repeat:'once',interval:1,startDate:tomorrow,priority:0},token);
+  await delay(200);
+  await js("window.dispatchEvent(new Event('focus'))");await wait("document.querySelector('#view').getAttribute('aria-busy')==='false'");
+  await js("document.querySelector('[data-view=upcoming]').click()");
+  assert.equal(await js("new Set([...document.querySelectorAll('.menu-dropdown')].map(el=>el.id)).size===document.querySelectorAll('.menu-dropdown').length"),true,'each occurrence menu has a unique controlled target');
+  await wait("[...document.querySelectorAll('[data-pick]')].some(b=>b.textContent.includes('Future only'))");
+  await js("[...document.querySelectorAll('[data-pick]')].find(b=>b.textContent.includes('Future only')).click()");
+  assert.ok(await js("document.querySelector('[data-make-current]').hidden && document.querySelector('#occurrence-complete').hidden"));
+  await js("document.querySelector('[data-close=occurrence-dialog]').click();document.querySelector('[data-view=today]').click();document.querySelector('#view [data-complete]').click()");
+  await wait("document.querySelector('progress').value===1");
+  await js("document.querySelector('#completed').open=false;document.querySelector('[data-view=routines]').click();document.querySelector('[data-view=today]').click()");
+  assert.equal(await js("document.querySelector('#completed').open"),false);
+  await js("document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
+  checks.push('stale popup revalidates completion; future popup has no early actions; explicit collapse retained');
+  const archivedOccurrence=await js("document.querySelector('#view [data-pick]').dataset.pick");
+  const archiveStaleRow=(await api('/api/state',undefined,token)).today.find(row=>row.occurrenceId===archivedOccurrence);
+  await js("document.querySelector('#view [data-pick]').click()");
+  await api('/api/tasks/'+encodeURIComponent(archiveStaleRow.taskId),undefined,token,'DELETE');
+  await js("document.querySelector('#occurrence-complete').click()");
+  await wait("document.querySelector('#view').getAttribute('aria-busy')==='false'");
+  assert.equal(await js("!!document.querySelector('#occurrence-dialog[open] [role=alert]:not([hidden])')"),true,'failed popup write is explained inside modal');
+  await js("window.dispatchEvent(new Event('focus'))");await wait("!document.querySelector('#occurrence-dialog').open");
+  checks.push('archived stale popup write reports failure inside modal; refresh removes unavailable occurrence');
+  await js("document.querySelector('[data-view=routines]').click()");
+  assert.equal(await js("document.querySelectorAll('.task-row [data-task-open]').length===document.querySelectorAll('.task-row').length"),true,'every routine row opens task details');
+  await js("document.querySelector('[data-task-open]').click()");
+  assert.equal(await js("document.querySelector('#occurrence-dialog').open"),true);
+  await js("document.querySelector('[data-close=occurrence-dialog]').click();document.querySelector('[data-menu-trigger]').click();document.activeElement.click();document.querySelector('#title').value='Unsaved refresh draft'");
+  await cdp('Network.setBlockedURLs',{urls:['*/api/auth/session']});
+  await js("window.dispatchEvent(new Event('focus'))");
+  await wait("!!document.querySelector('#retry')");
+  assert.ok(await js("document.querySelector('#task-dialog').open && document.querySelector('#title').value==='Unsaved refresh draft' && document.querySelector('#save-task').disabled"),'connection loss preserves editor draft while locking save');
+  await cdp('Network.setBlockedURLs',{urls:[]});
+  await js("document.querySelector('#retry').click()");await wait("!document.querySelector('#save-task').disabled");
+  assert.equal(await js("document.querySelector('#title').value"),'Unsaved refresh draft');
+  await js("document.querySelector('[data-close=task-dialog]').click()");await delay(100);
+  assert.equal(await js("document.activeElement.matches('[data-menu-trigger]')"),true,'editor cancellation restores originating menu trigger after refresh');
+  await js("document.activeElement.click();document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+  assert.equal(await js("document.activeElement.matches('[data-menu-trigger]') && document.activeElement.getAttribute('aria-expanded')==='false'"),true,'Escape closes row menu and restores trigger');
+  await js("document.querySelector('[data-view=today]').click()");
+  checks.push('routine row popup; disconnected editor draft retained, save locked, reconnect preserves draft');
   checks.push('completion and undo independently read back');
   await js("document.querySelector('[data-view=settings]').click()");
   const buildVersion=(await api('/health')).version;
   await wait(`document.querySelector('[aria-labelledby=about-heading]').textContent.includes(${JSON.stringify('Tasks web · Version '+buildVersion)})`);
   checks.push('web About reports the actual server build version');
-  await js("document.querySelector('#edit-connection').click();window.confirm=()=>true");
+  await js("document.querySelector('[data-view=today]').click();document.querySelector('#view [data-complete]').click()");await wait("document.querySelector('progress').value===1");
+  await js("document.querySelector('#completed').open=true;document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
+  await js("document.querySelector('[data-view=settings]').click();document.querySelector('#edit-connection').click();window.confirm=()=>true");
   await login('second','intentionally-wrong');await wait("document.querySelector('#auth-error')?.textContent.includes('Invalid')");
   assert.equal(await js("fetch('/api/auth/session').then(r=>r.json()).then(x=>x.username)"),'acceptance');
   await js("document.querySelector('#cancel-connection').click();document.querySelector('#edit-connection').click();window.confirmedSwitches=0;window.confirm=()=>{window.confirmedSwitches++;return true}");
@@ -108,12 +213,37 @@ try {
   assert.equal(await js('window.confirmedSwitches'),1);
   assert.equal(await js("fetch('/api/state').then(r=>r.json()).then(x=>x.tasks.length)"),0);
   checks.push('failed credentials preserve session and confirmed account switch isolates data');
+  const secondToken=(await api('/api/auth/login',{username:'second',password})).token;
+  await api('/api/tasks',{title:'Single current task',notes:'Only task in this isolated account',category:'Testing',repeat:'once',interval:1,startDate:today,priority:0},secondToken);
+  await js("window.dispatchEvent(new Event('focus'))");await wait("!!document.querySelector('.focus-card h2 button')");
+  assert.equal((await api('/api/state',undefined,secondToken)).today.length,1);
+  assert.equal(await js("document.querySelectorAll('.queue-row').length"),0);
+  await currentTitlePopup('Single task');
+  await js("document.querySelector('.focus-card h2 button').click()");
+  const currentPopupScreenshot=join(root,'web-current-task-popup.png');
+  await writeFile(currentPopupScreenshot,Buffer.from((await cdp('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await js("document.querySelector('[data-make-current]').click()");
+  assert.equal(await js("document.querySelector('.focus-card h2').textContent"),'Single current task');
+  await js("document.querySelector('.focus-card h2 button').click();document.querySelector('#occurrence-complete').click()");
+  await wait("document.querySelector('progress').value===1");
+  assert.equal((await api('/api/state',undefined,secondToken)).progress.completed,1,'single current popup completion independently read back');
+  checks.push('single current popup Make current and Mark done with independent API readback');
   await js("document.querySelector('[data-view=settings]').click();document.querySelector('#edit-connection').click()");
   await login('acceptance');await wait("!!document.querySelector('[data-complete]')");
+  await js("document.querySelector('#view [data-complete]').click()");await wait("document.querySelector('progress').value===1");
+  assert.equal(await js("document.querySelector('#completed').open"),false,'completed disclosure resets on account replacement');
+  await js("document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
+  checks.push('completed disclosure resets after account switch');
   await js("document.querySelector('#add-task').click();document.querySelector('#title').value='Created in browser';document.querySelector('#task-form').requestSubmit()");
   await wait("document.querySelector('#notice').textContent.includes('Task added')");
   assert.ok((await api('/api/state',undefined,token)).tasks.some(t=>t.title==='Created in browser'));
   checks.push('browser task creation independently read back');
+  await js("document.querySelector('[data-view=routines]').click();const row=[...document.querySelectorAll('.task-row')].find(row=>row.textContent.includes('Created in browser'));row.querySelector('[data-menu-trigger]').click();row.querySelector('[data-archive]').click()");
+  assert.equal(await js("document.querySelector('#archive-dialog').open"),true);
+  await js("document.querySelector('#confirm-archive').click()");await wait("document.querySelector('#notice').textContent.includes('Task archived')");
+  assert.ok(!(await api('/api/state',undefined,token)).tasks.some(t=>t.title==='Created in browser'));
+  checks.push('per-task archive menu uses existing confirmation and independent deletion readback');
+  await js("document.querySelector('[data-view=today]').click()");
   for(const [width,height] of [[320,740],[390,844],[1440,1000]]) {
     await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
     assert.equal(await js('document.documentElement.scrollWidth>innerWidth'),false,`horizontal overflow at ${width}`);
@@ -124,6 +254,7 @@ try {
   await js("document.querySelector('[data-view=settings]').click()");
   await cdp('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:-1,uploadThroughput:-1});
   await js("document.querySelector('#sign-out').click()");await wait("document.querySelector('#notice').textContent.includes('revocation could not be confirmed')");
+  assert.equal(await js("document.querySelector('#occurrence-title').textContent+document.querySelector('#occurrence-content').textContent"),'','offline sign-out clears hidden popup task data');
   await cdp('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
   await navigate();
   assert.ok(await js("!!document.querySelector('#auth-form') && !document.querySelector('.focus-card') && localStorage.getItem('daymark-signed-out-v1')==='1'"));
@@ -131,8 +262,10 @@ try {
   assert.ok(await js('localStorage.length===0'));
   await js("document.querySelector('[data-view=settings]').click();document.querySelector('#sign-out').click()");await wait("document.querySelector('#notice').textContent==='Signed out.'");
   assert.equal(await js("fetch('/api/auth/session').then(r=>r.status)"),401);
+  assert.equal(await js("document.querySelector('#occurrence-title').textContent+document.querySelector('#occurrence-content').textContent"),'','sign-out clears hidden popup task data');
   checks.push('offline logout survives reload, explicit re-login and server logout revokes cookie');
-  const result={passed:true,scope:'Actual Go HTTP API and real Chromium; isolated accounts/database only',checks,screenshot};
+  assert.deepEqual(runtimeErrors,[],'no uncaught browser exceptions');
+  const result={passed:true,scope:'Actual Go HTTP API and real Chromium; isolated accounts/database only',checks,screenshot,currentPopupScreenshot};
   await writeFile(join(root,'web-result.json'),JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result,null,2));
 } finally {

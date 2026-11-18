@@ -7,9 +7,10 @@ node --test tests/web/*.test.mjs
 node --check apps/web/app.mjs
 node --check apps/web/auth.mjs
 node --check apps/web/state.mjs
+node --check apps/web/interactions.mjs
 ```
 
-These cover queue ordering, Not now, state validation, escaping, cookie-only same-origin requests, connection replacement, offline sign-out, stale responses and the removal of legacy task caches. Node unit checks are not browser/API integration evidence.
+These cover queue ordering, Not now, state validation, escaping, cookie-only same-origin requests, connection replacement, offline sign-out, stale responses and the removal of legacy task caches. Interaction policies additionally cover latest-snapshot popup eligibility (including completed, future, missing, disconnected, busy and stale-date occurrences) and in-memory completed-disclosure choices with date/account reset. Node unit checks are not browser/API integration evidence.
 
 ## Real Chromium + Go API acceptance
 
@@ -22,7 +23,7 @@ node tests/web/setup-smoke.mjs
 
 The script builds the actual Go server, creates a fresh database and two disposable accounts under the system scratch directory (`TMPDIR`), starts an ephemeral loopback server, and launches Chromium with a fresh profile. It never opens a live user database and stops its server/browser when finished. It needs no npm packages and no Python.
 
-Checks include first-login/current-origin display, actual HttpOnly cookie authentication, HTML-looking task escaping, no persistent browser task/credential data, completion/undo with independent API read-back, failed credentials preserving a session, confirmed two-account isolation, task creation from the browser, 320/390/1440px layouts, offline logout surviving reload, explicit re-login, and server-side logout revocation. A JSON report and PNG screenshot are saved in the reported scratch directory.
+Checks include first-login/current-origin display, actual HttpOnly cookie authentication, HTML-looking task escaping, no persistent browser task/credential data, completion/undo with independent API read-back, failed credentials preserving a session, confirmed two-account isolation, task creation from the browser, 320/390/1440px layouts, offline logout surviving reload, explicit re-login, and server-side logout revocation. Interaction acceptance exercises queue popups without implicit focus changes, explicit Make current/Mark done, completed Undo, future action lockout, stale-popup refresh and write failures, per-task Edit/Archive menus and independent persistence/deletion readback, completed expansion/collapse through refresh/navigation and account reset, plus an editor draft across connection failure/recovery with save lockout and focus restoration. Uncaught browser exceptions fail the runner. A JSON report and PNG screenshot are saved in the reported scratch directory.
 
 The persisted browser sign-out marker contains no task or credential data. Offline logout is local clearing, not proof of remote session revocation.
 

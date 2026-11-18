@@ -159,6 +159,10 @@ public sealed class TasksClient : IDisposable
     public Task UndoAsync(Occurrence occurrence, DateOnly date, CancellationToken cancellationToken = default) => ChangeOccurrence("undo", occurrence, date, cancellationToken);
     private Task ChangeOccurrence(string action, Occurrence occurrence, DateOnly date, CancellationToken ct) => ConnectedOperation(async p =>
     {
+        // Client eligibility is stricter than the server's idempotent mutation API.
+        // Check inside the serialized operation against the latest loaded snapshot.
+        if (action == "complete" ? !TaskActions.CanComplete(State, occurrence, date) : !TaskActions.CanUndo(State, occurrence, date))
+            throw new TasksClientException();
         var result = await Request<DayState>(p, HttpMethod.Post, "/api/occurrences/" + action, new { taskId = occurrence.TaskId, dueDate = occurrence.DueDate, date = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) }, ct).ConfigureAwait(false);
         State = ValidateState(result, date);
     }, ct);
@@ -166,6 +170,21 @@ public sealed class TasksClient : IDisposable
     {
         var created = await Request<TaskItem>(p, HttpMethod.Post, "/api/tasks", draft, cancellationToken).ConfigureAwait(false);
         if (created is null) throw new TasksClientException();
+        State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
+    }, cancellationToken);
+    public Task EditTaskAsync(string taskId, TaskDraft draft, DateOnly date, CancellationToken cancellationToken = default) => ConnectedOperation(async p =>
+    {
+        var updated = await Request<TaskItem>(p, HttpMethod.Put, "/api/tasks/" + Uri.EscapeDataString(taskId), draft, cancellationToken).ConfigureAwait(false);
+        if (updated is null) throw new TasksClientException();
+        State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
+    }, cancellationToken);
+    public Task ArchiveTaskAsync(string taskId, DateOnly date, CancellationToken cancellationToken = default) => ConnectedOperation(async p =>
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, p.Endpoint + "/api/tasks/" + Uri.EscapeDataString(taskId));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", p.Token);
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) throw new TasksClientException(true);
+        response.EnsureSuccessStatusCode();
         State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
     }, cancellationToken);
     public async Task SignOutAsync(CancellationToken cancellationToken = default)

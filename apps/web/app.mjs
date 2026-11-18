@@ -1,5 +1,6 @@
 import {orderWaiting, deferOccurrence, readCachedState, canMutate, isCurrentRefresh, escapeHTML as esc} from './state.mjs';
 
+import {occurrenceActions, createCompletedDisclosure} from './interactions.mjs';
 const $ = selector => document.querySelector(selector);
 import {createConnection} from './auth.mjs';
 import {fetchBuildVersion} from './version.mjs';
@@ -17,15 +18,22 @@ const schedule = task => task.repeat === 'once' ? 'One time' : `Every ${task.int
 let state = null, connected = false, pending = false, refreshing = false;
 let view = 'today', editingId = null, archiveId = null, returnFocus = null;
 let mutationVersion = 0;
+let occurrenceIdOpen = null;
+const completedDisclosure = createCompletedDisclosure();
 let orderDate = '', order = [];
 let checking = true, authBusy = false, editingConnection = false, signedOut = false;
 let setupRequired = null;
 let connectionMessage = '', authError = '';
 const connection = createConnection({storage:browserStorage,onClear:()=> {
   state = null; connected = false; order = []; orderDate = ''; mutationVersion += 1;
-  editingId = null; archiveId = null; returnFocus = null;
-  for (const dialog of document.querySelectorAll('dialog')) dialog.close();
-  $('#task-form').reset(); $('#archive-copy').textContent = '';
+  const keepDraft = connection.session && $('#task-dialog')?.open;
+  if (!keepDraft) editingId = null;
+  archiveId = null; if (!keepDraft) returnFocus = null; occurrenceIdOpen = null;
+  if (!connection.session) completedDisclosure.reset();
+  for (const dialog of document.querySelectorAll('dialog')) if (!(keepDraft && dialog.id === 'task-dialog')) dialog.close();
+  if (!keepDraft) $('#task-form').reset();
+  $('#archive-copy').textContent = '';
+  for (const id of ['#occurrence-title','#occurrence-content','#occurrence-error']) if ($(id)) $(id).textContent = '';
   if (!$('#setup-form') && !$('#auth-form')) $('#view').replaceChildren();
 }});
 function clearAuthSecrets() {
@@ -82,8 +90,8 @@ function metadata(row, due = false) {
 }
 function render() {
   const focused = document.activeElement;
-  const focusKey = focused?.closest('#task-menu') ? 'task-options' : focused?.dataset?.focusKey;
-  const doneOpen = Boolean($('#completed')?.open);
+  const focusKey = focused?.closest('.menu-dropdown')?.parentElement.querySelector('.menu-trigger')?.dataset.focusKey || focused?.dataset?.focusKey;
+  const completedOpen = completedDisclosure.read(state?.date, $('#completed')?.open);
   const n = state?.today.filter(row => !row.completed).length ?? 0;
   const welcomeScreen=checking || setupRequired !== false || !connection.session;
   document.body.classList.toggle('welcome-screen',welcomeScreen);
@@ -112,7 +120,8 @@ function render() {
     if (view === 'upcoming') renderUpcoming();
     if (view === 'routines') renderRoutines();
   }
-  if ($('#completed')) $('#completed').open = doneOpen;
+  if ($('#completed')) $('#completed').open = completedOpen;
+  if ($('#occurrence-dialog')?.open) renderOccurrence();
   if (focusKey && !document.querySelector('dialog[open]')) [...document.querySelectorAll('[data-focus-key]')].find(el => el.dataset.focusKey === focusKey)?.focus({preventScroll:true});
   for (const dialog of document.querySelectorAll('dialog')) {
     for (const button of dialog.querySelectorAll('button')) button.disabled = pending || (!connected && (button.type === 'submit' || button.id === 'confirm-archive'));
@@ -145,6 +154,10 @@ function renderSignIn() {
 function renderSettings() {
   $('#view').innerHTML = `<h1>Settings.</h1><p class="page-sub">Your connection and app.</p><section class="settings-panel" aria-labelledby="connection-heading"><h2 id="connection-heading">Connection</h2><dl><dt>Server</dt><dd>${esc(location.origin)}</dd><dt>Account</dt><dd>${esc(connection.session.username)}</dd><dt>Session</dt><dd>${connected ? 'Connected' : 'Connection required'}${connection.session.expiresAt ? ` · Expires ${esc(connection.session.expiresAt)}` : ''}</dd></dl><p class="muted">Tasks and history stay on your server. Nothing is available offline.</p><div class="settings-actions"><button id="edit-connection" ${authBusy || pending || refreshing ? 'disabled' : ''}>Edit connection</button><button id="test-session" ${authBusy || pending || refreshing ? 'disabled' : ''}>Test session</button><button id="sign-out" ${authBusy || pending ? 'disabled' : ''}>Sign out</button></div></section><section class="settings-panel" aria-labelledby="about-heading"><h2 id="about-heading">About</h2><p>Tasks web · Version ${esc(buildVersion)}</p><p class="muted">Android app updates are managed in the Android app. This browser cannot check your installed Android version or install updates.</p><a href="https://github.com/everyonesoftware/tasks/releases" target="_blank" rel="noopener noreferrer">Android releases on GitHub ↗</a></section>`;
 }
+function taskMenu(taskId, title) {
+  const key = `options-${taskId}`;
+  return `<div class="task-menu"><button class="menu-trigger" data-menu-trigger aria-label="Options for ${esc(title)}" aria-expanded="false" aria-controls="${esc(key)}" data-focus-key="${esc(key)}" ${disabled()}>⋮</button><div id="${esc(key)}" class="menu-dropdown" hidden><button data-edit="${esc(taskId)}" ${disabled()}>Edit task</button><button data-archive="${esc(taskId)}" ${disabled()}>Archive task</button></div></div>`;
+}
 function renderToday() {
   const waiting = orderWaiting(state.today, order), current = waiting[0];
   const done = state.today.filter(row => row.completed);
@@ -152,23 +165,34 @@ function renderToday() {
   const progress = `<div class="progress-wrap"><div class="progress-label"><b>Today’s progress</b><span>${completed} of ${total} complete</span></div><progress max="${Math.max(1,total)}" value="${completed}" aria-label="Today’s task completion: ${completed} of ${total}"></progress></div>`;
   let focus;
   if (current) {
-    focus = `<section class="focus-card" aria-label="Current task"><div class="focus-header"><span class="focus-eyebrow"><i></i>Current task</span><div class="task-menu"><button id="task-menu-trigger" aria-label="Current task options" aria-expanded="false" aria-controls="task-menu" class="menu-trigger" data-focus-key="task-options">⋮</button><div id="task-menu" class="menu-dropdown" hidden><button data-defer ${pending || waiting.length < 2 ? 'disabled' : ''}>Not now</button><button data-edit="${esc(current.taskId)}" ${disabled()}>Edit task</button><button data-archive="${esc(current.taskId)}" ${disabled()}>Archive task</button></div></div></div><h2>${esc(current.title)}</h2><p class="metadata">${metadata(current)}</p>${current.notes ? `<p class="task-notes">${esc(current.notes)}</p>` : ''}<div class="focus-actions"><button class="primary" data-complete="${esc(current.occurrenceId)}" data-focus-key="complete" ${disabled()}><span aria-hidden="true">✓</span> Mark done</button></div></section>`;
+    focus = `<section class="focus-card" aria-label="Current task"><div class="focus-header"><span class="focus-eyebrow"><i></i>Current task</span><div class="task-menu"><button id="task-menu-trigger" aria-label="Current task options" aria-expanded="false" aria-controls="task-menu" class="menu-trigger" data-focus-key="task-options">⋮</button><div id="task-menu" class="menu-dropdown" hidden><button data-defer ${pending || waiting.length < 2 ? 'disabled' : ''}>Not now</button><button data-edit="${esc(current.taskId)}" ${disabled()}>Edit task</button><button data-archive="${esc(current.taskId)}" ${disabled()}>Archive task</button></div></div></div><h2><button type="button" class="current-title" data-task-open="${esc(current.taskId)}" data-focus-key="current-title" aria-haspopup="dialog" aria-controls="occurrence-dialog" ${disabled()}>${esc(current.title)}</button></h2><p class="metadata">${metadata(current)}</p>${current.notes ? `<p class="task-notes">${esc(current.notes)}</p>` : ''}<div class="focus-actions"><button class="primary" data-complete="${esc(current.occurrenceId)}" data-focus-key="complete" ${disabled()}><span aria-hidden="true">✓</span> Mark done</button></div></section>`;
   } else if (!state.tasks.length) {
     focus = '<section class="focus-card empty"><span class="focus-eyebrow">A fresh start</span><h2>Your first task goes here</h2><p>Add a one-off task or a routine you want to repeat.</p><div class="focus-actions"><button class="primary" data-add '+disabled()+'>Add your first task</button></div></section>';
   } else {
     focus = `<section class="focus-card empty"><span class="focus-eyebrow">${total ? 'Today, complete' : 'Nothing due today'}</span><h2>${total ? 'You’ve made room for the rest of your day.' : 'A little breathing room.'}</h2><p>Your upcoming tasks will be here when they’re due.</p></section>`;
   }
   const emptyQueue = !state.tasks.length ? '<h2 class="queue-title">Waiting tasks</h2><p class="muted">No tasks yet. Your queue will build as you add them.</p>' : '';
-  $('#view').innerHTML = `<h1>One thing at a time.</h1><p class="page-sub">${esc(dateLabel(state.date))} · ${waiting.length} ${waiting.length === 1 ? 'task' : 'tasks'} remaining</p>${progress}<div class="work-layout">${focus}<section class="queue" aria-label="The rest of today">${waiting.length > 1 ? `<h2 class="queue-title">Still to come <span>${waiting.length-1} tasks</span></h2>${waiting.slice(1).map((row,i)=>`<button class="queue-row" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}" ${pending ? 'disabled' : ''}><span class="queue-number">${String(i+2).padStart(2,'0')}</span><span class="row-copy"><strong>${esc(row.title)}</strong><small>${metadata(row)}</small></span><span aria-hidden="true">›</span></button>`).join('')}` : emptyQueue}</section></div>${done.length ? `<details id="completed" class="completed"><summary>Completed today (${done.length})</summary>${done.map(row=>`<div class="done-row"><span aria-hidden="true">✓</span><span>${esc(row.title)}</span><button data-undo="${esc(row.occurrenceId)}" data-focus-key="undo-${esc(row.occurrenceId)}" aria-label="Undo completion of ${esc(row.title)}" ${disabled()}>Undo</button></div>`).join('')}</details>` : ''}`;
+  $('#view').innerHTML = `<h1>One thing at a time.</h1><p class="page-sub">${esc(dateLabel(state.date))} · ${waiting.length} ${waiting.length === 1 ? 'task' : 'tasks'} remaining</p>${progress}<div class="work-layout">${focus}<section class="queue" aria-label="The rest of today">${waiting.length > 1 ? `<h2 class="queue-title">Still to come <span>${waiting.length-1} tasks</span></h2>${waiting.slice(1).map((row,i)=>`<div class="queue-item"><button class="queue-row" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}" ${pending ? 'disabled' : ''}><span class="queue-number">${String(i+2).padStart(2,'0')}</span><span class="row-copy"><strong>${esc(row.title)}</strong><small>${metadata(row)}</small></span><span aria-hidden="true">›</span></button>${taskMenu(row.taskId,row.title)}</div>`).join('')}` : emptyQueue}</section></div>${done.length ? `<details id="completed" class="completed"><summary>Completed today (${done.length})</summary>${done.map(row=>`<div class="done-row"><span aria-hidden="true">✓</span><button class="completed-task" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}">${esc(row.title)}</button><button data-undo="${esc(row.occurrenceId)}" data-focus-key="undo-${esc(row.occurrenceId)}" aria-label="Undo completion of ${esc(row.title)}" ${disabled()}>Undo</button>${taskMenu(row.taskId,row.title)}</div>`).join('')}</details>` : ''}`;
 }
 function renderUpcoming() {
   let previous = '';
-  $('#view').innerHTML = `<h1>Not for today.</h1><p class="page-sub">Your next scheduled tasks.</p>${state.upcoming.length ? state.upcoming.map(row => { const heading = previous !== row.dueDate ? `<h2 class="list-heading">${esc(dateLabel(row.dueDate))}</h2>` : ''; previous = row.dueDate; return `${heading}<article class="task-row"><div><h3>${esc(row.title)}</h3><p class="metadata">${metadata(row)}</p>${row.notes ? `<p class="task-notes">${esc(row.notes)}</p>` : ''}</div><button data-edit="${esc(row.taskId)}" ${disabled()}>Edit</button></article>`; }).join('') : '<div class="empty"><h2>Nothing scheduled ahead.</h2><p class="muted">New tasks with a future start date will appear here.</p></div>'}`;
+  $('#view').innerHTML = `<h1>Not for today.</h1><p class="page-sub">Your next scheduled tasks.</p>${state.upcoming.length ? state.upcoming.map(row => { const heading = previous !== row.dueDate ? `<h2 class="list-heading">${esc(dateLabel(row.dueDate))}</h2>` : ''; previous = row.dueDate; return `${heading}<article class="task-row"><button class="row-copy row-open" data-pick="${esc(row.occurrenceId)}" data-focus-key="pick-${esc(row.occurrenceId)}"><strong>${esc(row.title)}</strong><small>${metadata(row)}</small></button>${taskMenu(row.taskId,row.title)}</article>`; }).join('') : '<div class="empty"><h2>Nothing scheduled ahead.</h2><p class="muted">New tasks with a future start date will appear here.</p></div>'}`;
 }
 function renderRoutines() {
-  $('#view').innerHTML = `<h1>Your routines.</h1><p class="page-sub">All your tasks and the schedules behind them.</p>${state.tasks.length ? state.tasks.map(task=>`<article class="task-row"><div><h2>${esc(task.title)}</h2><p class="metadata">${metadata(task)} · Starts ${esc(task.startDate)}</p>${task.notes ? `<p class="task-notes">${esc(task.notes)}</p>` : ''}</div><div class="row-actions"><button data-edit="${esc(task.id)}" data-focus-key="edit-${esc(task.id)}" ${disabled()}>Edit</button><button data-archive="${esc(task.id)}" data-focus-key="archive-${esc(task.id)}" ${disabled()}>Archive</button></div></article>`).join('') : '<div class="empty"><h2>No routines yet.</h2><p class="muted">Add a one-time task or a repeating routine.</p></div>'}`;
+  $('#view').innerHTML = `<h1>Your routines.</h1><p class="page-sub">All your tasks and the schedules behind them.</p>${state.tasks.length ? state.tasks.map(task=>`<article class="task-row"><button class="row-copy row-open" data-task-open="${esc(task.id)}" data-focus-key="task-${esc(task.id)}"><strong>${esc(task.title)}</strong><small>${metadata(task)} · Starts ${esc(task.startDate)}</small></button>${taskMenu(task.id,task.title)}</article>`).join('') : '<div class="empty"><h2>No routines yet.</h2><p class="muted">Add a one-time task or a repeating routine.</p></div>'}`;
 }
-function openDialog(id, trigger) { returnFocus = trigger; $(id).showModal(); }
+function renderOccurrence() {
+  const row = [...(state?.today || []),...(state?.upcoming || [])].find(row => row.occurrenceId === occurrenceIdOpen) || state?.tasks.find(task=>`task:${task.id}` === occurrenceIdOpen);
+  if (!row || !connected) { $('#occurrence-dialog').close(); return; }
+  $('#occurrence-title').textContent = row.title;
+  $('#occurrence-content').innerHTML = `<p class="metadata">${metadata(row)}</p>${row.notes ? `<p class="task-notes">${esc(row.notes)}</p>` : ''}`;
+  const actions = occurrenceActions(state, occurrenceIdOpen, connected, pending, localDate());
+  $('[data-make-current]').hidden = !actions.makeCurrent;
+  const action = $('#occurrence-complete');
+  action.hidden = !actions.complete && !actions.undo;
+  action.textContent = actions.undo ? 'Undo' : 'Mark done';
+}
+function openDialog(id, trigger) { returnFocus = trigger?.closest('.task-menu')?.querySelector('.menu-trigger') || trigger; $(id).showModal(); }
 function openTask(id, trigger) {
   if (!connected || pending) return;
   editingId = id;
@@ -205,10 +229,12 @@ async function mutate(path, method, body, afterSuccess, errorTarget) {
   } finally { pending = false; render(); }
 }
 function closeMenu(restore = false) {
-  const menu = $('#task-menu');
-  if (!menu || menu.hidden) return;
-  menu.hidden = true; $('#task-menu-trigger').setAttribute('aria-expanded','false');
-  if (restore) $('#task-menu-trigger').focus();
+  for (const menu of document.querySelectorAll('.menu-dropdown:not([hidden])')) {
+    menu.hidden = true;
+    const trigger = menu.parentElement.querySelector('.menu-trigger');
+    trigger.setAttribute('aria-expanded','false');
+    if (restore) trigger.focus();
+  }
 }
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
@@ -225,14 +251,29 @@ document.addEventListener('click', event => {
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
   if (button.dataset.view) { view = button.dataset.view; notify(''); render(); return; }
   if (button.id === 'add-task' || button.hasAttribute('data-add')) { openTask(null,button); return; }
-  if (button.id === 'task-menu-trigger') {
-    const menu = $('#task-menu'); menu.hidden = !menu.hidden; button.setAttribute('aria-expanded',String(!menu.hidden)); if (!menu.hidden) menu.querySelector('button:not(:disabled)')?.focus(); return;
+  if (button.id === 'task-menu-trigger' || button.hasAttribute('data-menu-trigger')) {
+    const menu = document.getElementById(button.getAttribute('aria-controls')); const opening = menu.hidden; closeMenu(); menu.hidden = !opening; button.setAttribute('aria-expanded',String(!menu.hidden)); if (!menu.hidden) menu.querySelector('button:not(:disabled)')?.focus(); return;
   }
   if (button.hasAttribute('data-defer')) {
     order = deferOccurrence(state.today,order,orderWaiting(state.today,order)[0]?.occurrenceId); saveOrder(); render(); $('#task-menu-trigger')?.focus(); return;
   }
+  if (button.dataset.taskOpen) {
+    if (!canMutate(state, connected, pending, localDate())) return;
+    const row = state.today.find(row=>row.taskId === button.dataset.taskOpen);
+    occurrenceIdOpen = row?.occurrenceId || `task:${button.dataset.taskOpen}`;
+    setError('#occurrence-error',''); renderOccurrence(); openDialog('#occurrence-dialog',button); return;
+  }
   if (button.dataset.pick) {
-    order = [button.dataset.pick,...orderWaiting(state.today,order).map(row=>row.occurrenceId).filter(id=>id !== button.dataset.pick)]; saveOrder(); render(); $('[data-complete]')?.focus(); return;
+    if (!canMutate(state, connected, pending, localDate())) return;
+    occurrenceIdOpen = button.dataset.pick; setError('#occurrence-error',''); renderOccurrence(); openDialog('#occurrence-dialog',button); return;
+  }
+  if (button.hasAttribute('data-make-current')) {
+    if (!canMutate(state, connected, pending, localDate())) return;
+    if (!occurrenceActions(state, occurrenceIdOpen, connected, pending, localDate()).makeCurrent) return;
+    const row = state.today.find(row=>row.occurrenceId === occurrenceIdOpen);
+    if (!row) return;
+    order = [row.occurrenceId,...orderWaiting(state.today,order).map(row=>row.occurrenceId).filter(id=>id !== row.occurrenceId)];
+    $('#occurrence-dialog').close(); saveOrder(); render(); $('[data-complete]')?.focus(); return;
   }
   if (button.dataset.edit) { closeMenu(); openTask(button.dataset.edit,button); return; }
   if (button.dataset.archive) {
@@ -242,11 +283,14 @@ document.addEventListener('click', event => {
     $('#archive-copy').textContent = `Archive “${task.title}”?`;
     setError('#archive-error',''); closeMenu(); openDialog('#archive-dialog',button); return;
   }
-  const occurrenceId = button.dataset.complete || button.dataset.undo;
+  const popupAction = button.id === 'occurrence-complete';
+  const occurrenceId = popupAction ? occurrenceIdOpen : button.dataset.complete || button.dataset.undo;
   if (occurrenceId) {
     const row = state.today.find(row=>row.occurrenceId === occurrenceId); if (!row) return;
-    const undo = Boolean(button.dataset.undo);
-    mutate(`/api/occurrences/${undo ? 'undo' : 'complete'}`, 'POST', {taskId:row.taskId,dueDate:row.dueDate,date:localDate()}, ()=> { notify(undo ? 'Task restored to today.' : 'Task completed. You can undo it under Completed today.'); $('[data-complete]')?.focus(); }); return;
+    const undo = popupAction ? row.completed : Boolean(button.dataset.undo);
+    const actions = occurrenceActions(state, occurrenceId, connected, pending, localDate());
+    if (!(undo ? actions.undo : actions.complete)) return;
+    mutate(`/api/occurrences/${undo ? 'undo' : 'complete'}`, 'POST', {taskId:row.taskId,dueDate:row.dueDate,date:localDate()}, ()=> { $('#occurrence-dialog').close(); notify(undo ? 'Task restored to today.' : 'Task completed. You can undo it under Completed today.'); $('[data-complete]')?.focus(); }, popupAction ? '#occurrence-error' : null); return;
   }
   if (button.id === 'confirm-archive') {
     mutate(`/api/tasks/${encodeURIComponent(archiveId)}`, 'DELETE', null, ()=> { $('#archive-dialog').close(); notify('Task archived. Completion history retained.'); }, '#archive-error'); return;
@@ -301,20 +345,23 @@ $('#repeat').addEventListener('change', updateInterval);
 for (const dialog of document.querySelectorAll('dialog')) {
   dialog.addEventListener('cancel', event => { if (pending) event.preventDefault(); });
   dialog.addEventListener('close', ()=> {
-    if (returnFocus?.isConnected) returnFocus.focus(); else $('#add-task').focus();
+    if (document.querySelector('dialog[open]')) return;
+    const key = returnFocus?.dataset.focusKey;
+    const target = returnFocus?.isConnected ? returnFocus : [...document.querySelectorAll('[data-focus-key]')].find(el=>el.dataset.focusKey === key);
+    (target || $('[data-complete]') || $('#add-task')).focus();
   });
 }
 document.addEventListener('keydown', event => {
-  const menu = $('#task-menu');
+  const menu = event.target.closest('.task-menu')?.querySelector('.menu-dropdown');
   if (event.key === 'Escape' && menu && !menu.hidden) { event.preventDefault(); closeMenu(true); }
-  if (event.target.id === 'task-menu-trigger' && ['ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); if (menu.hidden) event.target.click(); }
-  if (event.target.closest('#task-menu') && ['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+  if (event.target.matches('.menu-trigger') && ['ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); if (menu.hidden) event.target.click(); }
+  if (event.target.closest('.menu-dropdown') && ['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
     event.preventDefault(); const items = [...menu.querySelectorAll('button:not(:disabled)')];
     let index = items.indexOf(document.activeElement);
     index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length-1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     items[index]?.focus();
   }
-  if (event.key === 'Tab' && event.target.closest('#task-menu')) setTimeout(()=>closeMenu(),0);
+  if (event.key === 'Tab' && event.target.closest('.menu-dropdown')) setTimeout(()=>closeMenu(),0);
 });
 window.addEventListener('focus', refresh);
 window.addEventListener('pagehide', clearAuthSecrets);

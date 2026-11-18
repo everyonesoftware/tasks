@@ -33,6 +33,7 @@
 <footer><button type="button" data-close="task-dialog">Cancel</button><button type="submit" class="primary" id="save-task">Add task</button></footer>
 </form>
 </dialog>
+<dialog id="occurrence-dialog" aria-labelledby="occurrence-title"><h2 id="occurrence-title"></h2><div id="occurrence-content"></div><p id="occurrence-error" class="error" role="alert" hidden></p><footer><button type="button" data-close="occurrence-dialog">Close</button><button type="button" data-make-current>Make current</button><button type="button" class="primary" id="occurrence-complete">Mark done</button></footer></dialog>
 <dialog id="archive-dialog" aria-labelledby="archive-dialog-title"><h2 id="archive-dialog-title">Archive task?</h2><p id="archive-copy"></p><p class="muted">This removes the task from your active lists and keeps its completion history. There is no restore in this version.</p><p id="archive-error" class="error" role="alert" hidden></p><footer><button type="button" data-close="archive-dialog" autofocus>Cancel</button><button type="button" class="danger" id="confirm-archive">Archive task</button></footer></dialog>
 <noscript><p class="error">Tasks needs JavaScript enabled to load and manage your tasks.</p></noscript>
 </body>

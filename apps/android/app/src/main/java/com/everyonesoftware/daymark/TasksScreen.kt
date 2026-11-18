@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,13 +60,15 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
  else -> repeat
 }
 
-@Composable fun TasksScreen(state: UiState, actions: Actions) {
+@Composable fun TasksScreen(state: UiState, actions: Actions, completedSection: MutableState<Boolean>? = null) {
  var page by rememberSaveable { mutableStateOf("Today") }
  var formOpen by rememberSaveable { mutableStateOf(false) }
  var editing by remember { mutableStateOf<Task?>(null) }
  var archiving by remember { mutableStateOf<Task?>(null) }
  val data = if(state.snapshot.online) state.snapshot.data else null
  val writable = state.snapshot.online && !state.busy && data?.date == LocalDate.now().toString()
+ val expandedState: MutableState<Boolean> = completedSection ?: remember(data?.date, state.session?.endpoint, state.session?.username) { mutableStateOf(true) }
+ var completedExpanded by expandedState
  val incomplete = data?.today?.filterNot { it.completed }.orEmpty()
  val waiting = if (state.order.isEmpty()) incomplete else state.order.mapNotNull { id -> incomplete.find { it.occurrenceId == id } } + incomplete.filter { it.occurrenceId !in state.order }
  val current = waiting.firstOrNull()
@@ -134,49 +137,98 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
           Text(if(data.today.isEmpty()) "Add a task when you’re ready." else "You’ve made room for the rest of your day.")
          }
         }
-       } else CurrentTask(current, waiting.size>1 && !state.busy, writable, actions)
+       } else CurrentTask(current, waiting.size>1 && writable, writable, actions, data.tasks.find { it.id==current.taskId }, onEdit={ editing=it; formOpen=true }, onArchive={ archiving=it })
       }
       if(waiting.size>1) item { Text("STILL TO COME", style=MaterialTheme.typography.bodySmall, color=Muted) }
       items(waiting.drop(1), key={ it.occurrenceId }) { item ->
-       Column(Modifier.fillMaxWidth().clickable(enabled=!state.busy) { actions.onPick(item) }.padding(vertical=12.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        Text(item.title, style=MaterialTheme.typography.titleLarge)
-        Text("${schedule(item.repeat,item.interval)} · ${item.category}${if(item.overdue) " · Overdue ${item.dueDate}" else ""}", style=MaterialTheme.typography.bodySmall, color=Muted)
-        HorizontalDivider(color=Color(0xFF3B4B50), modifier=Modifier.padding(top=10.dp))
+       var open by remember(item.occurrenceId) { mutableStateOf(false) }
+       Box {
+        Column(Modifier.fillMaxWidth().clickable(enabled=writable) { open=true }.padding(vertical=12.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+          Text(item.title, style=MaterialTheme.typography.titleLarge, modifier=Modifier.weight(1f))
+          TaskOptions(data.tasks.find { it.id==item.taskId }, writable, onEdit={ editing=it; formOpen=true }, onArchive={ archiving=it })
+         }
+         Text("${schedule(item.repeat,item.interval)} · ${item.category}${if(item.overdue) " · Overdue ${item.dueDate}" else ""}", style=MaterialTheme.typography.bodySmall, color=Muted)
+         HorizontalDivider(color=Color(0xFF3B4B50), modifier=Modifier.padding(top=10.dp))
+        }
+        DropdownMenu(expanded=open && writable, onDismissRequest={ open=false }) {
+         DropdownMenuItem(text={ Text("Make current") }, onClick={ open=false; actions.onPick(item) })
+         DropdownMenuItem(text={ Text("Mark done") }, onClick={ open=false; actions.onComplete(item) })
+        }
        }
       }
       val done = data.today.filter { it.completed }
-      if(done.isNotEmpty()) item { Text("Completed today (${done.size})", style=MaterialTheme.typography.bodySmall, color=Muted) }
-      items(done, key={ "done:${it.occurrenceId}" }) { item ->
-       Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-        Text(item.title, modifier=Modifier.weight(1f), style=MaterialTheme.typography.titleLarge)
-        TextButton(onClick={ actions.onUndo(item) }, enabled=writable, modifier=Modifier.semantics { contentDescription="Undo completion of ${item.title}" }) { Text("Undo", fontSize=16.sp) }
+      if(done.isNotEmpty()) item {
+       TextButton(onClick={ completedExpanded=!completedExpanded }, modifier=Modifier.fillMaxWidth().semantics { stateDescription=if(completedExpanded) "Expanded" else "Collapsed" }) {
+        Text("Completed today (${done.size})", modifier=Modifier.weight(1f), style=MaterialTheme.typography.bodySmall, color=Muted)
+        Text(if(completedExpanded) "⌃" else "⌄", color=Muted)
+       }
+      }
+      if(completedExpanded) items(done, key={ "done:${it.occurrenceId}" }) { item ->
+       var open by remember(item.occurrenceId) { mutableStateOf(false) }
+       Box {
+        Row(Modifier.fillMaxWidth().clickable(enabled=writable) { open=true }, verticalAlignment=Alignment.CenterVertically) {
+         Text(item.title, modifier=Modifier.weight(1f).padding(vertical=12.dp), style=MaterialTheme.typography.titleLarge)
+         TaskOptions(data.tasks.find { it.id==item.taskId }, writable, onEdit={ editing=it; formOpen=true }, onArchive={ archiving=it })
+         TextButton(onClick={ actions.onUndo(item) }, enabled=writable, modifier=Modifier.semantics { contentDescription="Undo completion of ${item.title}" }) { Text("Undo", fontSize=16.sp) }
+        }
+        DropdownMenu(expanded=open && writable, onDismissRequest={ open=false }) {
+         DropdownMenuItem(text={ Text("Undo completion") }, onClick={ open=false; actions.onUndo(item) })
+        }
        }
       }
      }
      "Upcoming" -> {
       if(data.upcoming.isEmpty()) item { Text("No upcoming tasks", color=Muted) }
       items(data.upcoming, key={ it.occurrenceId }) { item ->
-       Column(Modifier.fillMaxWidth().padding(vertical=10.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        Text(item.title, style=MaterialTheme.typography.titleLarge)
-        Text("${item.dueDate} · ${schedule(item.repeat,item.interval)} · ${item.category}", color=Muted, style=MaterialTheme.typography.bodySmall)
-        if(item.notes.isNotEmpty()) Text(item.notes)
-        HorizontalDivider(color=Color(0xFF3B4B50), modifier=Modifier.padding(top=12.dp))
+       var open by remember(item.occurrenceId) { mutableStateOf(false) }
+       val task = data.tasks.find { it.id==item.taskId }
+       Box {
+        Column(Modifier.fillMaxWidth().clickable(enabled=writable && task!=null) { open=true }.padding(vertical=10.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+          Text(item.title, style=MaterialTheme.typography.titleLarge, modifier=Modifier.weight(1f))
+          TaskOptions(task, writable, onEdit={ editing=it; formOpen=true }, onArchive={ archiving=it })
+         }
+         Text("${item.dueDate} · ${schedule(item.repeat,item.interval)} · ${item.category}", color=Muted, style=MaterialTheme.typography.bodySmall)
+         if(item.notes.isNotEmpty()) Text(item.notes)
+         HorizontalDivider(color=Color(0xFF3B4B50), modifier=Modifier.padding(top=12.dp))
+        }
+        DropdownMenu(expanded=open && writable && task!=null, onDismissRequest={ open=false }) {
+         if(task!=null) {
+          DropdownMenuItem(text={ Text("Edit task") }, onClick={ open=false; editing=task; formOpen=true })
+          DropdownMenuItem(text={ Text("Archive task") }, onClick={ open=false; archiving=task })
+         }
+        }
        }
       }
      }
      "Routines" -> {
       if(data.tasks.isEmpty()) item { Text("No tasks yet", color=Muted) }
       items(data.tasks, key={ it.id }) { task ->
-       Column(Modifier.fillMaxWidth().padding(vertical=8.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        Text(task.title, style=MaterialTheme.typography.titleLarge)
-        Text("${schedule(task.repeat,task.interval)} · ${task.category}", style=MaterialTheme.typography.bodySmall, color=Muted)
-        Text("Starts ${task.startDate} · ${listOf("Normal", "Medium", "High")[task.priority.coerceIn(0,2)]} priority", style=MaterialTheme.typography.bodySmall, color=Muted)
-        if(task.notes.isNotEmpty()) Text(task.notes)
-        Row {
-         TextButton(onClick={ editing=task; formOpen=true }, enabled=writable) { Text("Edit", fontSize=16.sp) }
-         TextButton(onClick={ archiving=task }, enabled=writable) { Text("Archive", fontSize=16.sp) }
+       var open by remember(task.id) { mutableStateOf(false) }
+       val occurrence = data.today.find { it.taskId==task.id && it.dueDate<=data.date }
+       Box {
+        Column(Modifier.fillMaxWidth().clickable(enabled=writable) { open=true }.padding(vertical=8.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+          Text(task.title, style=MaterialTheme.typography.titleLarge, modifier=Modifier.weight(1f))
+          TaskOptions(task, writable, onEdit={ editing=it; formOpen=true }, onArchive={ archiving=it })
+         }
+         Text("${schedule(task.repeat,task.interval)} · ${task.category}", style=MaterialTheme.typography.bodySmall, color=Muted)
+         Text("Starts ${task.startDate} · ${listOf("Normal", "Medium", "High")[task.priority.coerceIn(0,2)]} priority", style=MaterialTheme.typography.bodySmall, color=Muted)
+         if(task.notes.isNotEmpty()) Text(task.notes)
+         HorizontalDivider(color=Color(0xFF3B4B50))
         }
-        HorizontalDivider(color=Color(0xFF3B4B50))
+        DropdownMenu(expanded=open && writable, onDismissRequest={ open=false }) {
+         if(occurrence!=null) {
+          if(occurrence.completed) DropdownMenuItem(text={ Text("Undo completion") }, onClick={ open=false; actions.onUndo(occurrence) })
+          else {
+           DropdownMenuItem(text={ Text("Make current") }, onClick={ open=false; actions.onPick(occurrence) })
+           DropdownMenuItem(text={ Text("Mark done") }, onClick={ open=false; actions.onComplete(occurrence) })
+          }
+         }
+         DropdownMenuItem(text={ Text("Edit task") }, onClick={ open=false; editing=task; formOpen=true })
+         DropdownMenuItem(text={ Text("Archive task") }, onClick={ open=false; archiving=task })
+        }
        }
       }
      }
@@ -193,20 +245,43 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
  }
 }
 
-@Composable private fun CurrentTask(item: Occurrence, canSkip: Boolean, writable: Boolean, actions: Actions) {
- var menu by remember { mutableStateOf(false) }
+@Composable private fun TaskOptions(task: Task?, writable: Boolean, onEdit: (Task) -> Unit, onArchive: (Task) -> Unit) {
+ if(task==null) return
+ var open by remember(task.id) { mutableStateOf(false) }
+ Box {
+  IconButton(onClick={ open=true }, enabled=writable, modifier=Modifier.semantics { contentDescription="Options for ${task.title}" }) { Text("⋮", fontSize=28.sp, color=Ink) }
+  DropdownMenu(expanded=open && writable, onDismissRequest={ open=false }) {
+   DropdownMenuItem(text={ Text("Edit task") }, onClick={ open=false; onEdit(task) })
+   DropdownMenuItem(text={ Text("Archive task") }, onClick={ open=false; onArchive(task) })
+  }
+ }
+}
+
+@Composable private fun CurrentTask(item: Occurrence, canSkip: Boolean, writable: Boolean, actions: Actions, task: Task?, onEdit: (Task) -> Unit, onArchive: (Task) -> Unit) {
+ var menu by remember(item.occurrenceId) { mutableStateOf(false) }
+ var occurrenceMenu by remember(item.occurrenceId) { mutableStateOf(false) }
  Surface(color=Focus, shape=RoundedCornerShape(14.dp)) {
   Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
    Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
     Text("CURRENT TASK", color=Mint, style=MaterialTheme.typography.bodySmall, modifier=Modifier.weight(1f))
     Box {
      IconButton(onClick={ menu=true }, modifier=Modifier.semantics { contentDescription="Current task options" }) { Text("⋮", fontSize=28.sp, color=Ink) }
-     DropdownMenu(expanded=menu, onDismissRequest={ menu=false }) {
+     DropdownMenu(expanded=menu && writable, onDismissRequest={ menu=false }) {
       DropdownMenuItem(text={ Text("Not now", fontSize=16.sp) }, onClick={ menu=false; actions.onNotNow() }, enabled=canSkip)
+      if(task!=null) {
+       DropdownMenuItem(text={ Text("Edit task") }, onClick={ menu=false; onEdit(task) })
+       DropdownMenuItem(text={ Text("Archive task") }, onClick={ menu=false; onArchive(task) })
+      }
      }
     }
    }
-   Text(item.title, style=MaterialTheme.typography.headlineLarge)
+   Box {
+    Text(item.title, style=MaterialTheme.typography.headlineLarge, modifier=Modifier.fillMaxWidth().clickable(enabled=writable) { occurrenceMenu=true })
+    DropdownMenu(expanded=occurrenceMenu && writable, onDismissRequest={ occurrenceMenu=false }) {
+     DropdownMenuItem(text={ Text("Make current") }, onClick={ occurrenceMenu=false; actions.onPick(item) })
+     DropdownMenuItem(text={ Text("Mark done") }, onClick={ occurrenceMenu=false; actions.onComplete(item) })
+    }
+   }
    Text("${schedule(item.repeat,item.interval)} · ${item.category}${if(item.priority==2) " · High priority" else ""}", style=MaterialTheme.typography.bodySmall, color=Color(0xFFB4CDBB))
    if(item.overdue) Text("Overdue · ${item.dueDate}", style=MaterialTheme.typography.bodySmall, color=Mint)
    if(item.notes.isNotBlank()) Text(item.notes, fontSize=16.sp, lineHeight=24.sp)
@@ -225,6 +300,7 @@ private fun schedule(repeat: String, interval: Int): String = when(repeat) {
   Surface(Modifier.fillMaxWidth().padding(16.dp).widthIn(max=600.dp).heightIn(max=760.dp).imePadding(), shape=RoundedCornerShape(18.dp), color=Panel) {
    Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement=Arrangement.spacedBy(14.dp)) {
     Text(if(task==null) "New task" else "Edit task", style=MaterialTheme.typography.headlineLarge)
+    if(task!=null && task.repeat!="once") Text("Changes apply to the entire task schedule, not just this occurrence.", style=MaterialTheme.typography.bodySmall, color=Muted)
     OutlinedTextField(draft.title, { draft=draft.copy(title=it.take(200)) }, label={ Text("Task title") }, modifier=Modifier.fillMaxWidth(), enabled=!busy, singleLine=true)
     ChoiceField("Repeat", schedule(draft.repeat,1), listOf("once", "daily", "weekly", "monthly", "yearly").map { it to schedule(it,1) }, enabled=!busy) { draft=draft.copy(repeat=it) }
     OutlinedTextField(draft.interval, { draft=draft.copy(interval=it) }, label={ Text("Repeat interval (1–365)") }, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.fillMaxWidth(), enabled=!busy, singleLine=true)

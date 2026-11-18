@@ -11,6 +11,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 @Composable fun TasksApp(state: UiState,actions: Actions) {
+ val completedSection = remember(state.snapshot.data?.date, state.session?.endpoint, state.session?.username) { mutableStateOf(true) }
  if(state.session==null) {
   Surface(Modifier.fillMaxSize()) {
    Column(Modifier.safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
     Text("Tasks stay on your server. This device keeps only the connection and a secure sign-in session.")
    }
   }
- } else if(state.settings) SettingsScreen(state,actions) else TasksScreen(state,actions)
+ } else if(state.settings) SettingsScreen(state,actions) else TasksScreen(state,actions,completedSection)
 }
 @Composable private fun CredentialForm(session: Session?,busy: Boolean,error: String?,submit: String,onSubmit: (String,String,String)->Unit) {
  var url by remember { mutableStateOf(session?.endpoint.orEmpty()) }

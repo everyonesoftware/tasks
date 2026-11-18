@@ -26,8 +26,8 @@ class NativeConnectionFlowTest {
   compose.onNodeWithText("Sign in").performScrollTo().performClick()
   compose.waitUntil(20000) {compose.onAllNodesWithText("Fixture task").fetchSemanticsNodes().isNotEmpty()}
   val prefs=context.getSharedPreferences("daymark",Context.MODE_PRIVATE)
-  assertEquals(setOf("autoCheck","endpoint","username","session"),prefs.all.keys)
-  assertFalse(prefs.getString("session","")!!.contains("fixture-token"))
+  assertEquals(setOf("autoCheck","sessionEnvelope"),prefs.all.keys)
+  assertFalse(prefs.getString("sessionEnvelope","")!!.contains("fixture-token"))
   assertFalse(prefs.all.values.any {it.toString().contains("Fixture task") || it.toString().contains("fixture-password")})
   assertEquals("fixture-token",ProtectedSessionVault(AndroidRecords(context),KeystoreTokenCipher()).load()?.token)
   assertTrue(fixture.requests.any {it.contains("Authorization: Bearer fixture-token",true)})

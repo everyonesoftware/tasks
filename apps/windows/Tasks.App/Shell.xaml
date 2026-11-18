@@ -79,14 +79,16 @@
           <Border x:Name="CurrentCard" Background="#30453E" BorderBrush="#4B6656" BorderThickness="1" CornerRadius="8" Padding="26,22,26,24" MinHeight="283">
             <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
               <Grid Margin="0,0,0,18"><TextBlock Text="Current task" CharacterSpacing="100" FontSize="12" FontWeight="SemiBold" Foreground="#C1D8C6" VerticalAlignment="Center" /><Button x:Name="CurrentOptions" HorizontalAlignment="Right" Content="⋯" FontSize="22" Padding="7,0" Background="Transparent" BorderThickness="0" AutomationProperties.Name="Current task options"><Button.Flyout><MenuFlyout><MenuFlyoutItem x:Name="NotNow" Text="Not now" /></MenuFlyout></Button.Flyout></Button></Grid>
-              <TextBlock x:Name="CurrentTitle" Grid.Row="1" FontFamily="Georgia" FontSize="32" TextWrapping="Wrap" Foreground="#EAF3E9" Margin="0,0,0,13" />
+              <Button x:Name="CurrentTitleActions" Grid.Row="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="0" Background="Transparent" BorderThickness="0" IsTabStop="True" Margin="0,0,0,13">
+                <TextBlock x:Name="CurrentTitle" FontFamily="Georgia" FontSize="32" TextWrapping="Wrap" Foreground="#EAF3E9" />
+              </Button>
               <TextBlock x:Name="CurrentMetadata" Grid.Row="2" FontSize="12" Foreground="#C1D8C6" TextWrapping="Wrap" />
               <TextBlock x:Name="CurrentNotes" Grid.Row="3" FontSize="14" TextWrapping="Wrap" Foreground="#DFEBE0" Margin="0,20,0,12" />
               <Button x:Name="MarkDone" Grid.Row="4" HorizontalAlignment="Right" Content="✓  Mark done" Background="{StaticResource Mint}" Foreground="#1F392B" FontWeight="SemiBold" Padding="16,10" Margin="0,16,0,0" />
             </Grid>
           </Border>
           <StackPanel Spacing="12"><Grid><TextBlock Text="Waiting for you" FontSize="12" FontWeight="SemiBold" CharacterSpacing="80" Foreground="{StaticResource Muted}" /><TextBlock x:Name="QueueCount" HorizontalAlignment="Right" FontSize="12" Foreground="{StaticResource Muted}" /></Grid><StackPanel x:Name="QueueList" /></StackPanel>
-          <StackPanel x:Name="CompletedPanel" Spacing="12"><TextBlock Text="Completed today" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Muted}" /><StackPanel x:Name="CompletedList" /></StackPanel>
+          <StackPanel x:Name="CompletedPanel" Spacing="12"><Button x:Name="CompletedToggle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Muted}" AutomationProperties.Name="Completed today, collapsed" /><StackPanel x:Name="CompletedList" /></StackPanel>
         </StackPanel>
         <StackPanel x:Name="ListPanel" Spacing="12" Visibility="Collapsed" />
         <StackPanel x:Name="SettingsPanel" Spacing="18" Visibility="Collapsed">
