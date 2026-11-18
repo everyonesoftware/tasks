@@ -1,3 +1,12 @@
+# Android release manifest filename migration — 2026-11-18
+
+- Primary metadata is now `tasks-release.json`; packaging and the combined release workflow also emit/publish byte-identical `daymark-release.json` for already-installed clients. New Android clients and publication baselines prefer the Tasks name and retain legacy-only release support. Failed, malformed or duplicate primary updater metadata cannot silently fall back.
+- Regression tests were observed RED/GREEN for Android discovery and publication-baseline selection. Parent verification passed all 38 Android JVM tests (zero failures/errors/skips), debug APK and instrumentation APK assembly, Android lint, `go test -race ./...`, `go vet ./...`, all 5 independent release-packaging tests, all 113 deployment/Windows/web Node tests, actionlint and `git diff --check`. Windows PowerShell helper tests initially hit this host's missing ICU; rerunning with the documented `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` passed without production changes.
+- With authorization for the release filename change, added `tasks-release.json` to existing GitHub Latest release `v17` without replacing the legacy asset, APK, checksums or Windows installer. Downloaded the new 219-byte asset (ID `761208126`) and verified exact equality with the original manifest; SHA256 `0a3eadfc7464305f84a04bd1a09bf0b5a2a7764e66ebf191abe7d37aeb6619cd`. Re-read the exact release and verified all preexisting asset metadata (except naturally advancing download counts) and release source/title/notes/status were unchanged; Latest still resolves to v17. Snapshot evidence: `/opt/data/cache/scratch/tasks-manifest-remote-dTRw1w/`.
+- No source commit/push, new binary release, signing-key change, device installation, live-data mutation or installed-app upgrade was performed. Source changes need an authorized push/build before they ship in a new APK; the existing v17 APK still uses the legacy name, which remains available.
+
+---
+
 # Windows Music-style updater migration — 2026-11-17
 
 - Authorized feature commit `bd55927` was pushed as build **18**. Exact-SHA workflow **44198417046** failed in validation before native packaging/publication: selector-test fixtures hard-coded this host's scratch path when `TMPDIR` was absent on the GitHub runner. The correction uses Node's platform temp-directory fallback while retaining `TMPDIR` override support; no updater/installer production logic changed. Build 18 produced no new client release.

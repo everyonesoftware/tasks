@@ -1,10 +1,10 @@
 # Tasks Android signing and GitHub release assets
 
-The app checks stable releases in `everyonesoftware/tasks`. A release is usable only when it contains both the signed Android APK and `daymark-release.json` matching `contracts/android-release.schema.json`.
+The app checks stable releases in `everyonesoftware/tasks`. New releases contain the signed Android APK and primary `tasks-release.json` matching `contracts/android-release.schema.json`, plus a byte-identical `daymark-release.json` compatibility alias for installed clients. New clients prefer the Tasks name and accept legacy-only historical releases only when it is absent; invalid or failed primary metadata is an error.
 
-For the main-branch container/Android workflow, commit-count versioning and required GitHub Actions signing secrets, see `ci-publishing.md`. Successful verified Android builds automatically publish a stable `vN` GitHub Release with `Tasks-N.apk`, `daymark-release.json`, and `SHA256SUMS`. The manual packaging examples below describe the historical feature build, not the current commit-count build.
+For the main-branch container/Android workflow, commit-count versioning and required GitHub Actions signing secrets, see `ci-publishing.md`. Successful verified Android builds automatically publish a stable `vN` GitHub Release with `Tasks-N.apk`, `tasks-release.json`, its legacy alias, and `SHA256SUMS`. The manual packaging examples below describe the historical feature build, not the current commit-count build.
 
-The repository currently has no published releases. Do not substitute an illustrative mockup version or pretend a new release is available.
+Query GitHub for actual published releases. Do not substitute an illustrative mockup version or pretend a new release is available.
 
 ## Signing continuity
 
@@ -46,10 +46,11 @@ Output names follow this convention:
 
 ```text
 Tasks-0.2.0-2.apk
+tasks-release.json
 daymark-release.json
 ```
 
-Upload those two output files to the same non-draft, non-prerelease GitHub release, using the matching version tag. Keep signing-key continuity for every future build, and monotonically increase Android versionCode. A GitHub Actions runner must be explicitly provisioned with the same signing identity through a secure secret store before it can produce compatible release APKs; do not let CI generate a new random signing key per build.
+Upload those three output files to the same non-draft, non-prerelease GitHub release, using the matching version tag. Keep signing-key continuity for every future build, and monotonically increase Android versionCode. A GitHub Actions runner must be explicitly provisioned with the same signing identity through a secure secret store before it can produce compatible release APKs; do not let CI generate a new random signing key per build.
 
 The configured main-branch workflow publishes verified Android releases automatically. Pushing source, manually publishing releases, and configuring repository secrets still require authorization. No GitHub release or signing-secret upload is performed automatically by the standalone packaging tool.
 

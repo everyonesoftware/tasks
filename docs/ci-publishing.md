@@ -26,8 +26,8 @@ For count `N`:
 - Container tags: `ghcr.io/everyonesoftware/tasks:N` and `:latest`.
 - OCI image version label and unauthenticated server `/health` version: `N`.
 - Android `versionCode`: integer `N`; `versionName`: string `N`.
-- Actions artifact: `Tasks-android-N`, containing `Tasks-N.apk`, `SHA256SUMS`, and
-  `daymark-release.json`.
+- Actions artifact: `Tasks-android-N`, containing `Tasks-N.apk`, `SHA256SUMS`, primary
+  `tasks-release.json` and its byte-identical `daymark-release.json` compatibility alias.
 - Windows executable version: `0.1.N`, file version `0.1.N.0`, with the exact source
   SHA in its informational version. Windows requires `N <= 65534` because .NET
   assembly-version components have a tighter bound than Android version codes.

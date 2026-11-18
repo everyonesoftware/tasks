@@ -204,7 +204,8 @@ jobs:
           checksum=${checksum%% *}
           printf '{"schemaVersion":1,"packageName":"com.everyonesoftware.daymark","versionName":"%s","versionCode":%s,"minSdk":%s,"apkAssetName":"Tasks-%s.apk","sha256":"%s"}\n' \
             "$DAYMARK_VERSION" "$DAYMARK_VERSION" "$min_sdk" "$DAYMARK_VERSION" "$checksum" \
-            > dist/android/daymark-release.json
+            > dist/android/tasks-release.json
+          cp dist/android/tasks-release.json dist/android/daymark-release.json
           echo "Signed Android version/build: $DAYMARK_VERSION ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload signed Android APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -362,7 +363,7 @@ jobs:
           [[ "$BUILD_WINDOWS" == true || "$BUILD_WINDOWS" == false ]]
           files=()
           if [[ "$BUILD_ANDROID" == true ]]; then
-            files+=("dist/android/Tasks-$DAYMARK_VERSION.apk" dist/android/daymark-release.json dist/android/SHA256SUMS)
+            files+=("dist/android/Tasks-$DAYMARK_VERSION.apk" dist/android/tasks-release.json dist/android/daymark-release.json dist/android/SHA256SUMS)
           fi
           if [[ "$BUILD_WINDOWS" == true ]]; then
             files+=("dist/windows/Tasks-Windows-$DAYMARK_VERSION-Setup.exe" "dist/windows/Tasks-Windows-$DAYMARK_VERSION-Setup.exe.sha256"

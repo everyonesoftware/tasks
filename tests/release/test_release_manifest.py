@@ -44,7 +44,9 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(result['apkAssetName'], 'Tasks-0.2.0-2.apk')
             self.assertEqual(result['sha256'], hashlib.sha256(apk.read_bytes()).hexdigest())
             self.assertEqual((out / result['apkAssetName']).read_bytes(), apk.read_bytes())
-            self.assertEqual(json.loads((out / 'daymark-release.json').read_text()), result)
+            self.assertEqual(json.loads((out / 'tasks-release.json').read_text()), result)
+            self.assertEqual((out / 'daymark-release.json').read_bytes(),
+                             (out / 'tasks-release.json').read_bytes())
             self.assertEqual(result['schemaVersion'], 1)
 
     def test_rejects_wrong_package_and_unsafe_release_identifiers(self):
@@ -77,10 +79,13 @@ class ReleaseManifestTests(unittest.TestCase):
             command = [sys.executable, str(TOOL), '--apk', str(apk), '--out', str(out), '--aapt', str(aapt)]
             refused = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(refused.returncode, 0, 'CLI must refuse a debug APK by default')
+            self.assertFalse((out / 'tasks-release.json').exists())
             self.assertFalse((out / 'daymark-release.json').exists())
             allowed = subprocess.run(command + ['--allow-debug'], capture_output=True, text=True)
             self.assertEqual(allowed.returncode, 0, allowed.stderr)
-            self.assertEqual(json.loads((out / 'daymark-release.json').read_text())['versionCode'], 2)
+            self.assertEqual(json.loads((out / 'tasks-release.json').read_text())['versionCode'], 2)
+            self.assertEqual((out / 'daymark-release.json').read_bytes(),
+                             (out / 'tasks-release.json').read_bytes())
 
 
 if __name__ == '__main__':

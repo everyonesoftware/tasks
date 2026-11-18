@@ -18,7 +18,7 @@ func TestAndroidTasksBrandingPreservesUpgradeIdentity(t *testing.T) {
 		"apps/android/app/src/main/java/com/everyonesoftware/daymark/SettingsScreen.kt":  {`fun TasksApp(`, `Text("Tasks",`},
 		"apps/android/app/src/main/java/com/everyonesoftware/daymark/MainActivity.kt":    {`class TasksViewModel(`, `File(updateDir,"Tasks.apk")`, `TasksTheme {TasksApp(`},
 		"apps/android/app/src/main/java/com/everyonesoftware/daymark/Data.kt":            {`class TasksRepository(`},
-		"apps/android/app/src/main/java/com/everyonesoftware/daymark/Updater.kt":         {`.header("User-Agent","Tasks-Android")`, `asset("daymark-release.json")`, `File(dir,"Tasks.apk")`},
+		"apps/android/app/src/main/java/com/everyonesoftware/daymark/Updater.kt":         {`.header("User-Agent","Tasks-Android")`, `asset(if(hasTasksManifest) "tasks-release.json" else "daymark-release.json")`, `File(dir,"Tasks.apk")`},
 	} {
 		contents := rootFile(t, path)
 		for _, text := range required {

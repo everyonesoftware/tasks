@@ -25,7 +25,8 @@ function baseline(platform, releases, api, root, head) {
     const number = Number(release.tag_name.slice(1));
     const assets = inventory(api, `releases/${release.id}/assets`);
     if (new Set(assets.map(a => a.name)).size !== assets.length || new Set(assets.map(a => a.id)).size !== assets.length) throw new Error('Duplicate publication asset identity.');
-    const names = platform === 'android' ? [`Tasks-${number}.apk`, 'daymark-release.json', 'SHA256SUMS'] : [`TasksWindows-0.1.${number}-win-x64-full.nupkg`, 'releases.win-x64.json', 'TasksWindows-win-x64-Setup.exe', 'TasksWindows-win-x64-Setup.exe.sha256', `Tasks-Windows-${number}-Setup.exe`, `Tasks-Windows-${number}-Setup.exe.sha256`];
+    const androidManifest = assets.some(a => a.name === 'tasks-release.json') ? 'tasks-release.json' : 'daymark-release.json';
+    const names = platform === 'android' ? [`Tasks-${number}.apk`, androidManifest, 'SHA256SUMS'] : [`TasksWindows-0.1.${number}-win-x64-full.nupkg`, 'releases.win-x64.json', 'TasksWindows-win-x64-Setup.exe', 'TasksWindows-win-x64-Setup.exe.sha256', `Tasks-Windows-${number}-Setup.exe`, `Tasks-Windows-${number}-Setup.exe.sha256`];
     if (!names.every(name => assets.filter(a => a.name === name && a.state === 'uploaded' && a.size > 0).length === 1)) continue;
     if (platform === 'windows' && number > 65534) throw new Error('Windows publication version exceeds native range.');
     const manifest = assets.find(a => a.name === names[1]);

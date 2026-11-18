@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -58,9 +59,16 @@ func TestAndroidWorkflowStagesUpdaterManifestFromVerifiedAPK(t *testing.T) {
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("stage: %v: %s", err, output)
 			}
-			data, err := os.ReadFile(filepath.Join(dir, "dist/android/daymark-release.json"))
+			data, err := os.ReadFile(filepath.Join(dir, "dist/android/tasks-release.json"))
 			if err != nil {
-				t.Fatalf("updater manifest missing: %v", err)
+				t.Fatalf("primary Tasks release manifest missing: %v", err)
+			}
+			legacy, err := os.ReadFile(filepath.Join(dir, "dist/android/daymark-release.json"))
+			if err != nil {
+				t.Fatalf("compatibility updater manifest missing: %v", err)
+			}
+			if !bytes.Equal(data, legacy) {
+				t.Fatal("legacy compatibility alias must be byte-identical to tasks-release.json")
 			}
 			var manifest struct {
 				SchemaVersion int

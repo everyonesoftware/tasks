@@ -37,8 +37,8 @@ function publicApi(publications, override = () => undefined) {
     for (const p of publications) {
       if (path === `releases/${p.release.id}/assets?per_page=100&page=1`) return p.assets;
       if (path === `git/ref/tags/${p.release.tag_name}`) return { object: { type: 'commit', sha: p.release.target_commitish } };
-      const manifest = p.assets.find(a => a.name === (p.platform === 'android' ? 'daymark-release.json' : 'releases.win-x64.json'));
-      if (manifest && path === `releases/assets/${manifest.id}`) return p.metadata;
+      const manifests = p.assets.filter(a => (p.platform === 'android' ? ['tasks-release.json', 'daymark-release.json'] : ['releases.win-x64.json']).includes(a.name));
+      if (manifests.some(a => path === `releases/assets/${a.id}`)) return p.metadata;
       const checksum = p.assets.find(a => a.name === 'SHA256SUMS');
       if (checksum && path === `releases/assets/${checksum.id}`) return `${p.metadata.sha256}  dist/android/${p.metadata.apkAssetName}\n`;
     }
@@ -46,6 +46,24 @@ function publicApi(publications, override = () => undefined) {
   };
   api.calls = calls; return api;
 }
+
+test('Android publication baselines prefer Tasks metadata while retaining legacy-only history', t => {
+  const f = fixture(t);
+  for (const layout of ['legacy', 'tasks', 'both']) {
+    const p = publication(f.base);
+    if (layout === 'tasks') p.assets[1].name = 'tasks-release.json';
+    if (layout === 'both') p.assets.push({ ...p.assets[1], id: 104, name: 'tasks-release.json' });
+    const api = publicApi([p]);
+    const result = selectBuilds({ root: f.root, api });
+    assert.equal(result.android.baseline, f.base, layout);
+    assert.equal(result.android.build, false, layout);
+    assert.ok(api.calls.includes(`releases/assets/${layout === 'both' ? 104 : 102}`));
+    if (layout === 'both') assert.ok(!api.calls.includes('releases/assets/102'));
+  }
+  const p = publication(f.base);
+  p.assets.push({ ...p.assets[1], id: 104, name: 'tasks-release.json' });
+  assert.throws(() => selectBuilds({ root: f.root, api: publicApi([p], path => path === 'releases/assets/104' ? {} : undefined) }), /metadata/);
+});
 
 test('publication metadata is identity-checked before it can suppress a build', t => {
   const f = fixture(t);

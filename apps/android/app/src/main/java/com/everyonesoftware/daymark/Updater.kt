@@ -59,7 +59,8 @@ class UpdateService(private val transport: UpdateTransport,private val sdk: Int)
    if(status!=UpdateStatus.AVAILABLE) return@withContext UpdateState(status)
    val release=json!!; val assets=release.getJSONArray("assets")
    fun asset(name: String): JSONObject { val matches=(0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name")==name };require(matches.size==1);return matches.single().also { require(GithubPolicy.initial(it.getString("browser_download_url"))) } }
-   val manifestAsset=asset("daymark-release.json"); val (mc,mj)=json(manifestAsset.getString("browser_download_url")); require(mc==200)
+   val hasTasksManifest=(0 until assets.length()).any { assets.getJSONObject(it).getString("name")=="tasks-release.json" }
+   val manifestAsset=asset(if(hasTasksManifest) "tasks-release.json" else "daymark-release.json"); val (mc,mj)=json(manifestAsset.getString("browser_download_url")); require(mc==200)
    val manifest=ReleaseManifest.parse(mj!!,sdk);val apk=asset(manifest.apkAssetName); val size=apk.getLong("size");require(size in 1..MAX_APK_BYTES)
    UpdateState(if(manifest.versionCode>installedCode) UpdateStatus.AVAILABLE else UpdateStatus.CURRENT,Release(manifest,apk.getString("browser_download_url"),size,release.optString("body","").take(100000)))
   } catch(e: Exception) { if(e is CancellationException) throw e; UpdateState(UpdateStatus.FAILED,error="Couldn’t check GitHub. Installed version is unchanged.") }

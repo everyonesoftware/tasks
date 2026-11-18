@@ -42,6 +42,7 @@ case "$1 $2" in
   'release create') touch "$CREATED" ;;
   'release view')
     printf 'Tasks-137.apk\nSHA256SUMS\n'
+    [[ $FAILURE == missing-primary-manifest ]] || echo tasks-release.json
     [[ $FAILURE == missing ]] || echo daymark-release.json
     [[ $FAILURE == missing-windows-installer ]] || echo Tasks-Windows-137-Setup.exe
     [[ $FAILURE == missing-windows-checksum ]] || echo Tasks-Windows-137-Setup.exe.sha256
@@ -94,6 +95,28 @@ func TestSelectivePlatformReleasePreservesUnchangedOutputs(t *testing.T) {
 			}
 			if !strings.Contains(calls, tc.required) || strings.Contains(calls, tc.absent) || !strings.Contains(calls, "--latest="+tc.latest) {
 				t.Fatalf("wrong selective publication: %s", calls)
+			}
+		})
+	}
+}
+
+func TestAndroidReleasePublishesAndVerifiesBothManifestNames(t *testing.T) {
+	sha := strings.Repeat("a", 40)
+	run := workflowRun(t, "Publish GitHub release")
+	for _, failure := range []string{"", "missing-primary-manifest", "missing"} {
+		t.Run("readback-"+failure, func(t *testing.T) {
+			output, err, calls, _, summary := runAndroidReleaseWorkflow(t, run, sha, failure, "", sha+"\trefs/tags/v137\n", "true", "false")
+			if (err != nil) != (failure != "") {
+				t.Errorf("publish error = %v, want error %v: %s", err, failure != "", output)
+			}
+			create, _, _ := strings.Cut(calls, "\n")
+			for _, name := range []string{"tasks-release.json", "daymark-release.json"} {
+				if !strings.Contains(create, "dist/android/"+name) {
+					t.Errorf("release upload missing %s: %s", name, create)
+				}
+			}
+			if failure != "" && strings.Contains(summary, "Published") {
+				t.Error("must not claim publication when either manifest is missing from readback")
 			}
 		})
 	}

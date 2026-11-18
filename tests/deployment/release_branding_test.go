@@ -1,10 +1,12 @@
 package deployment
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -21,12 +23,25 @@ func TestTasksReleasePackagingKeepsUpdaterIdentity(t *testing.T) {
 	}
 	out := filepath.Join(root, "out")
 	cmd := exec.Command("python3", "../../scripts/create_android_release.py", "--apk", apk, "--out", out, "--aapt", aapt)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("existing release helper: %v: %s", err, output)
 	}
-	data, err := os.ReadFile(filepath.Join(out, "daymark-release.json"))
+	data, err := os.ReadFile(filepath.Join(out, "tasks-release.json"))
+	if err != nil {
+		t.Fatal("primary Tasks release manifest missing:", err)
+	}
+	legacy, err := os.ReadFile(filepath.Join(out, "daymark-release.json"))
 	if err != nil {
 		t.Fatal("must retain updater metadata asset for existing installs:", err)
+	}
+	if !bytes.Equal(data, legacy) {
+		t.Fatal("legacy compatibility alias must be byte-identical to tasks-release.json")
+	}
+	for _, name := range []string{"tasks-release.json", "daymark-release.json"} {
+		if !strings.Contains(string(output), name) {
+			t.Errorf("packaging output must report %s: %s", name, output)
+		}
 	}
 	var manifest struct {
 		ApkAssetName string

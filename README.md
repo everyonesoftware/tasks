@@ -97,7 +97,7 @@ bash gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroid
 
 Release builds use an explicitly configured persistent signing identity. See **docs/android-releases.md** for the protected key location, signing environment variables, actual-APK manifest packaging, and the release asset convention. Do not lose or publish the private signing key.
 
-The updater reads actual releases from `everyonesoftware/tasks`; a new release must include the signed APK and `daymark-release.json`. No release is fabricated or automatically published. A downloaded package or installer intent is not proof of a completed installation; the installed PackageManager version is authoritative.
+The updater reads actual releases from `everyonesoftware/tasks`; a new Android release must include the signed APK, primary `tasks-release.json` and a byte-identical `daymark-release.json` alias for installed legacy clients. New clients prefer the Tasks name and support legacy-only historical releases. No release is fabricated; the authorized main-branch workflow publishes verified builds. A downloaded package or installer intent is not proof of a completed installation; the installed PackageManager version is authoritative.
 
 ## Native Windows development
 

@@ -33,7 +33,9 @@ def build_release(apk, badging, out):
     manifest = {'schemaVersion': 1, **info, 'apkAssetName': name, 'sha256': checksum}
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(apk, out / name)
-    (out / 'daymark-release.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    primary = out / 'tasks-release.json'
+    primary.write_text(json.dumps(manifest, indent=2) + '\n')
+    shutil.copyfile(primary, out / 'daymark-release.json')
     return manifest
 
 
@@ -72,7 +74,7 @@ def main(argv=None):
         if re.search(r'^application-debuggable\s*$', result.stdout, re.MULTILINE) and not args.allow_debug:
             raise ValueError('Refusing a debuggable APK; use a signed release build or explicitly pass --allow-debug for development')
         manifest = build_release(apk, result.stdout, args.out)
-        print(f"Packaged {manifest['apkAssetName']} and daymark-release.json")
+        print(f"Packaged {manifest['apkAssetName']}, tasks-release.json and daymark-release.json (compatibility alias)")
         print(f"Version {manifest['versionName']} / build {manifest['versionCode']}; SHA256 {manifest['sha256']}")
         if args.allow_debug:
             print('Development package only. Do not use a debug signing key for production releases.')

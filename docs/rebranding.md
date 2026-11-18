@@ -15,7 +15,11 @@ The following technical compatibility identifiers remain unchanged:
   `DAYMARK_HOST` has been renamed to `TASKS_HOST`. Update existing deployment
   environment entries; the old hostname variable is no longer read.
 - `daymark_session` and existing cookie, preference, session and storage keys.
-- Updater metadata asset: `daymark-release.json`.
+- Android updater metadata uses `tasks-release.json` as the primary asset. Publish
+  a byte-identical `daymark-release.json` compatibility alias so already-installed
+  clients still discover updates. New clients and publication selection prefer
+  the Tasks name and accept the legacy name only when the primary is absent;
+  malformed or failed primary metadata must not fall back to the alias.
 - Existing production signing identity, including the external keystore path
   `/opt/data/state/daymark/signing/daymark-release.p12`, its protected password
   file `/opt/data/state/daymark/signing/keystore-password` and key alias `daymark`.
