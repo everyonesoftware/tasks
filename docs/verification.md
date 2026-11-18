@@ -1,3 +1,12 @@
+# Windows release alias retirement — 2026-11-18
+
+- At Dan's request, future Windows releases stage and publish only `TasksWindows-win-x64-Setup.exe`, its checksum, the genuine full package and feed. The old `Tasks-Windows-N-Setup.exe` alias/checksum are removed from staging, artifact upload and release creation; hosted lifecycle acceptance now targets the current setup filename. The internal transition guard and installation/session protections are unchanged.
+- Publication baseline discovery accepts the current four-asset Windows inventory as well as existing releases containing extra legacy aliases, avoiding unnecessary repeated builds. Existing releases and Android's manifest alias remain unchanged.
+- Observed RED/GREEN regressions for exact staged inventory, workflow/lifecycle/upload selection, executed release shell without old aliases, and baseline recognition without aliases. All 84 deployment/Windows Node tests, `go test ./...`, and `go vet ./...` passed. PowerShell checks require the documented `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` setting on this host; initial unconfigured execution failed for missing ICU and the complete configured rerun passed.
+- No native Windows installer build/lifecycle, commit, push, publication, or modification of existing releases was performed.
+
+---
+
 # Task actions, editing menus and completed disclosure — 2026-11-18
 
 - Implemented task-row action popups across web, Android and native Windows: eligible Today occurrences offer Make current / Mark done; completed occurrences offer Undo; future occurrences cannot be focused or completed early. Task menus expose editing and confirmed archiving, retaining current-task Not now. Existing edit fields and archive-history behavior are reused, with no server/API shape or persistent task-cache changes.

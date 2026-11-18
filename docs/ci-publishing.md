@@ -31,11 +31,11 @@ For count `N`:
 - Windows executable version: `0.1.N`, file version `0.1.N.0`, with the exact source
   SHA in its informational version. Windows requires `N <= 65534` because .NET
   assembly-version components have a tighter bound than Android version codes.
-- Windows release assets: `Tasks-Windows-N-Setup.exe` and its `.sha256` legacy
-  filename-compatibility alias; `TasksWindows-win-x64-Setup.exe` and its `.sha256`; genuine
-  `TasksWindows-0.1.N-win-x64-full.nupkg` and `releases.win-x64.json`. Both setup
-  aliases have identical guarded bytes. Sidecars hash those exact installer bytes
-  and do not replace Android's existing `SHA256SUMS`.
+- Windows release assets: `TasksWindows-win-x64-Setup.exe` and its `.sha256`; genuine
+  `TasksWindows-0.1.N-win-x64-full.nupkg` and `releases.win-x64.json`. The retired
+  `Tasks-Windows-N-Setup.exe` alias and checksum are not published in future releases.
+  The sidecar hashes the exact guarded installer bytes
+  and does not replace Android's existing `SHA256SUMS`.
 - GitHub Release: tag `vN`, title `Tasks N`, targeting the exact build commit, with
   the selected platforms' verified files attached, plus generated notes.
 
@@ -123,7 +123,7 @@ and the runner's Inno Setup compiler solely for the unregistered transition guar
 It runs the Windows tests (including the actual pinned updater-source tests),
 publishes the self-contained x64 WinUI client, verifies its native runtime/merged
 PRI and source-bound file version, packs and validates the genuine full nupkg/feed,
-then embeds the genuine setup in the guard. Neither public setup alias bypasses
+then embeds the genuine setup in the guard. The public setup does not bypass
 the guard; no second Inno application installation or registration is created.
 It never packages the Linux compile-only library. Missing native payloads, mixed-case
 duplicate files, linked files, private data, wrong architectures and version/source

@@ -74,18 +74,15 @@ and payload bytes. `installer/Tasks.iss` builds only an **unregistered transitio
 guard** around the genuine Velopack setup, not another application installation.
 Output:
 
-- `dist/windows/Tasks-Windows-N-Setup.exe`
-- `dist/windows/Tasks-Windows-N-Setup.exe.sha256`
 - `dist/windows/TasksWindows-win-x64-Setup.exe`
 - `dist/windows/TasksWindows-win-x64-Setup.exe.sha256`
 - `dist/windows/TasksWindows-0.1.N-win-x64-full.nupkg`
 - `dist/windows/releases.win-x64.json`
 
-Both public setup filenames contain the same guarded bytes; the versioned alias
-preserves the filename expected by the old browser-only checker when that release
-is GitHub Latest. A Windows-only release deliberately is not Latest, so old clients
-must download that release's setup manually for this one-time transition. Filename
-compatibility alone does not migrate old clients. The raw, unguarded Velopack
+Only the current setup filename is published; the old `Tasks-Windows-N-Setup.exe`
+alias and its checksum are retired for future releases. Existing release assets
+are unchanged. Old browser-only clients must download the current setup manually
+for the one-time transition. The raw, unguarded Velopack
 bootstrapper is not published. Feed and full-package bytes remain genuine Velopack
 output, used directly by installed apps for later updates.
 

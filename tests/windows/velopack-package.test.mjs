@@ -23,15 +23,15 @@ function fixture(t) {
   return { root, source, guard, asset, save, packageName };
 }
 
-test('Velopack staging preserves exact feed/package bytes and distributes only guarded setup aliases', t => {
+test('Velopack staging preserves exact feed/package bytes and distributes only the current guarded setup', t => {
   const f = fixture(t), output = path.join(f.root, 'release');
   assert.equal(typeof packaging.stageVelopack, 'function', 'Velopack inventory staging is missing');
   packaging.stageVelopack(f.source, f.guard, output, '137');
   const names = fs.readdirSync(output).sort();
-  assert.deepEqual(names, ['Tasks-Windows-137-Setup.exe', 'Tasks-Windows-137-Setup.exe.sha256', f.packageName,
+  assert.deepEqual(names, [f.packageName,
     'TasksWindows-win-x64-Setup.exe', 'TasksWindows-win-x64-Setup.exe.sha256', 'releases.win-x64.json'].sort());
   for (const name of [f.packageName, 'releases.win-x64.json']) assert.deepEqual(fs.readFileSync(path.join(output, name)), fs.readFileSync(path.join(f.source, name)));
-  for (const name of ['Tasks-Windows-137-Setup.exe', 'TasksWindows-win-x64-Setup.exe']) {
+  for (const name of ['TasksWindows-win-x64-Setup.exe']) {
     assert.deepEqual(fs.readFileSync(path.join(output, name)), fs.readFileSync(f.guard));
     assert.equal(fs.readFileSync(path.join(output, name + '.sha256'), 'utf8'), `${crypto.createHash('sha256').update(fs.readFileSync(f.guard)).digest('hex')}  ${name}\n`);
   }

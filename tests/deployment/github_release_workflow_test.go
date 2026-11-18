@@ -44,8 +44,6 @@ case "$1 $2" in
     printf 'Tasks-137.apk\nSHA256SUMS\n'
     [[ $FAILURE == missing-primary-manifest ]] || echo tasks-release.json
     [[ $FAILURE == missing ]] || echo daymark-release.json
-    [[ $FAILURE == missing-windows-installer ]] || echo Tasks-Windows-137-Setup.exe
-    [[ $FAILURE == missing-windows-checksum ]] || echo Tasks-Windows-137-Setup.exe.sha256
     [[ $FAILURE == missing-velopack-setup ]] || echo TasksWindows-win-x64-Setup.exe
     [[ $FAILURE == missing-velopack-checksum ]] || echo TasksWindows-win-x64-Setup.exe.sha256
     [[ $FAILURE == missing-velopack-feed ]] || echo releases.win-x64.json
@@ -95,6 +93,9 @@ func TestSelectivePlatformReleasePreservesUnchangedOutputs(t *testing.T) {
 			}
 			if !strings.Contains(calls, tc.required) || strings.Contains(calls, tc.absent) || !strings.Contains(calls, "--latest="+tc.latest) {
 				t.Fatalf("wrong selective publication: %s", calls)
+			}
+			if strings.Contains(calls, "Tasks-Windows-") {
+				t.Fatalf("legacy Windows aliases must not be published: %s", calls)
 			}
 		})
 	}
@@ -193,8 +194,6 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 		{"create fails or release exists", strings.Repeat("a", 40), "create", "true", true},
 		{"readback fails", strings.Repeat("a", 40), "view", "true", true},
 		{"missing asset", strings.Repeat("a", 40), "missing", "true", true},
-		{"missing Windows installer", strings.Repeat("a", 40), "missing-windows-installer", "true", true},
-		{"missing Windows checksum", strings.Repeat("a", 40), "missing-windows-checksum", "true", true},
 		{"missing Velopack setup", strings.Repeat("a", 40), "missing-velopack-setup", "true", true},
 		{"missing Velopack checksum", strings.Repeat("a", 40), "missing-velopack-checksum", "true", true},
 		{"missing Velopack feed", strings.Repeat("a", 40), "missing-velopack-feed", "true", true},
@@ -211,7 +210,7 @@ func TestAndroidWorkflowPublishesReleaseAfterVerifiedArtifact(t *testing.T) {
 				}
 				return
 			}
-			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json", "dist/windows/Tasks-Windows-137-Setup.exe", "dist/windows/Tasks-Windows-137-Setup.exe.sha256", "dist/windows/TasksWindows-win-x64-Setup.exe", "dist/windows/TasksWindows-win-x64-Setup.exe.sha256", "dist/windows/releases.win-x64.json", "dist/windows/TasksWindows-0.1.137-win-x64-full.nupkg"} {
+			for _, required := range []string{"release create v137", "--repo fixture/tasks", "--target " + strings.Repeat("a", 40), "--title Tasks 137", "--generate-notes", "--draft=false", "--prerelease=false", "--latest=" + tc.wantLatest, "dist/android/Tasks-137.apk", "dist/android/SHA256SUMS", "dist/android/daymark-release.json", "dist/windows/TasksWindows-win-x64-Setup.exe", "dist/windows/TasksWindows-win-x64-Setup.exe.sha256", "dist/windows/releases.win-x64.json", "dist/windows/TasksWindows-0.1.137-win-x64-full.nupkg"} {
 				if !strings.Contains(log, required) {
 					t.Errorf("release command missing %q: %s", required, log)
 				}

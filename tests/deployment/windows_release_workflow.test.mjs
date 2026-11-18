@@ -43,7 +43,7 @@ test('Windows uses pinned native toolchain and explicit shell contracts before i
     'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1', "node-version: '24'",
     "Get-ChildItem tests/windows -Filter '*.test.mjs'", 'node --test @windowsTests',
     'pwsh ./scripts/build-windows-installer.ps1 -BuildNumber $env:DAYMARK_VERSION -AllowUnsigned',
-    'pwsh ./scripts/test-windows-installer.ps1 -InstallerPath "dist/windows/Tasks-Windows-$env:DAYMARK_VERSION-Setup.exe" -EvidenceDirectory "$env:RUNNER_TEMP/tasks-windows-evidence"',
+    'pwsh ./scripts/test-windows-installer.ps1 -InstallerPath "dist/windows/TasksWindows-win-x64-Setup.exe" -EvidenceDirectory "$env:RUNNER_TEMP/tasks-windows-evidence"',
   ]) assert.ok(windows.includes(required), `Windows missing ${required}`);
   assert.match(windows, /defaults:\n      run:\n        shell: pwsh/);
   assert.doesNotMatch(windows, /continue-on-error:|choco install|tests\/windows\/\*/);
@@ -54,7 +54,7 @@ test('Windows uses pinned native toolchain and explicit shell contracts before i
   const artifact = windows.slice(upload);
   assert.doesNotMatch(artifact, /if:|evidence|\.log|\.png/);
   assert.match(artifact, /name: Tasks-windows-\$\{\{ needs.validate.outputs.version \}\}/);
-  assert.match(artifact, /path: \|\n            dist\/windows\/Tasks-Windows-\$\{\{ needs.validate.outputs.version \}\}-Setup.exe\n            dist\/windows\/Tasks-Windows-\$\{\{ needs.validate.outputs.version \}\}-Setup.exe.sha256/);
+  assert.doesNotMatch(workflow, /dist\/windows\/Tasks-Windows-/);
   for (const asset of ['TasksWindows-win-x64-Setup.exe', 'TasksWindows-win-x64-Setup.exe.sha256', 'TasksWindows-0.1.${{ needs.validate.outputs.version }}-win-x64-full.nupkg', 'releases.win-x64.json']) assert.ok(artifact.includes('dist/windows/' + asset), asset);
   assert.match(artifact, /if-no-files-found: error/);
 });

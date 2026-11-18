@@ -251,7 +251,7 @@ jobs:
       - name: Test Windows installer lifecycle
         id: lifecycle
         timeout-minutes: 5
-        run: pwsh ./scripts/test-windows-installer.ps1 -InstallerPath "dist/windows/Tasks-Windows-$env:DAYMARK_VERSION-Setup.exe" -EvidenceDirectory "$env:RUNNER_TEMP/tasks-windows-evidence"
+        run: pwsh ./scripts/test-windows-installer.ps1 -InstallerPath "dist/windows/TasksWindows-win-x64-Setup.exe" -EvidenceDirectory "$env:RUNNER_TEMP/tasks-windows-evidence"
       - name: Diagnose native startup failure
         if: failure() && steps.lifecycle.outcome == 'failure'
         timeout-minutes: 4
@@ -292,8 +292,6 @@ jobs:
         with:
           name: Tasks-windows-${{ needs.validate.outputs.version }}
           path: |
-            dist/windows/Tasks-Windows-${{ needs.validate.outputs.version }}-Setup.exe
-            dist/windows/Tasks-Windows-${{ needs.validate.outputs.version }}-Setup.exe.sha256
             dist/windows/TasksWindows-win-x64-Setup.exe
             dist/windows/TasksWindows-win-x64-Setup.exe.sha256
             dist/windows/TasksWindows-0.1.${{ needs.validate.outputs.version }}-win-x64-full.nupkg
@@ -366,8 +364,7 @@ jobs:
             files+=("dist/android/Tasks-$DAYMARK_VERSION.apk" dist/android/tasks-release.json dist/android/daymark-release.json dist/android/SHA256SUMS)
           fi
           if [[ "$BUILD_WINDOWS" == true ]]; then
-            files+=("dist/windows/Tasks-Windows-$DAYMARK_VERSION-Setup.exe" "dist/windows/Tasks-Windows-$DAYMARK_VERSION-Setup.exe.sha256"
-              dist/windows/TasksWindows-win-x64-Setup.exe dist/windows/TasksWindows-win-x64-Setup.exe.sha256
+            files+=(dist/windows/TasksWindows-win-x64-Setup.exe dist/windows/TasksWindows-win-x64-Setup.exe.sha256
               "dist/windows/TasksWindows-0.1.$DAYMARK_VERSION-win-x64-full.nupkg" dist/windows/releases.win-x64.json)
           fi
           [[ ${#files[@]} -gt 0 ]]

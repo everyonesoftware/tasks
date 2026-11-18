@@ -110,9 +110,8 @@ export function stageVelopack(source, guardedSetup, output, value) {
   // Native build additionally validates the ZIP inventory and extracted payload.
   const guard = fs.readFileSync(guardedSetup), digest = crypto.createHash('sha256').update(guard).digest('hex');
   const files = new Map([[packageName, bytes], [feedName, feedBytes]]);
-  for (const name of [setupName, `Tasks-Windows-${number}-Setup.exe`]) {
-    files.set(name, guard); files.set(name + '.sha256', Buffer.from(`${digest}  ${name}\n`));
-  }
+  files.set(setupName, guard);
+  files.set(setupName + '.sha256', Buffer.from(`${digest}  ${setupName}\n`));
   if (fs.existsSync(output) && (!fs.lstatSync(output).isDirectory() || fs.lstatSync(output).isSymbolicLink() || fs.readdirSync(output).length)) throw new Error('Velopack output must be empty; refusing to overwrite release bytes.');
   fs.mkdirSync(output, { recursive: true });
   for (const [name, data] of files) fs.writeFileSync(path.join(output, name), data, { flag: 'wx' });

@@ -65,6 +65,17 @@ test('Android publication baselines prefer Tasks metadata while retaining legacy
   assert.throws(() => selectBuilds({ root: f.root, api: publicApi([p], path => path === 'releases/assets/104' ? {} : undefined) }), /metadata/);
 });
 
+test('Windows publication baselines do not require retired installer aliases', t => {
+  const f = fixture(t);
+  for (const legacyAliases of [false, true]) {
+    const p = publication(f.base, 1, 'windows');
+    if (!legacyAliases) p.assets = p.assets.filter(a => !a.name.startsWith('Tasks-Windows-'));
+    const result = selectBuilds({ root: f.root, api: publicApi([p]) });
+    assert.equal(result.windows.baseline, f.base);
+    assert.equal(result.windows.build, false);
+  }
+});
+
 test('publication metadata is identity-checked before it can suppress a build', t => {
   const f = fixture(t);
   for (const mutate of [
