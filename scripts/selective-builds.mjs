@@ -10,7 +10,7 @@ function git(root, ...args) {
   const text = execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
   return args[0] === 'diff' ? text : text.trim();
 }
-function inventory(api, path) {
+export function inventory(api, path) {
   const items = [];
   for (let page = 1; page <= 5; page++) {
     const batch = api(`${path}?per_page=100&page=${page}`);
@@ -20,7 +20,7 @@ function inventory(api, path) {
   }
   throw new Error('Publication inventory exceeds bounded lookup; refusing an unverified baseline.');
 }
-function baseline(platform, releases, api, root, head) {
+export function baseline(platform, releases, api, root, head) {
   for (const release of releases) {
     const number = Number(release.tag_name.slice(1));
     const assets = inventory(api, `releases/${release.id}/assets`);
@@ -94,7 +94,7 @@ function affected(path, platform, root, source, head) {
     } catch { return true; }
   }
   // Documentation and the selector itself are control-plane inputs, not binaries.
-  if (path.startsWith('docs/') || path.startsWith('tests/deployment/') || /(?:^|\/)(?:README|AGENTS|CLAUDE)\.md$/.test(path) || /^contracts\/.*\.md$/.test(path) || path === 'scripts/selective-builds.mjs') return false;
+  if (path.startsWith('docs/') || path.startsWith('tests/deployment/') || /(?:^|\/)(?:README|AGENTS|CLAUDE)\.md$/.test(path) || /^contracts\/.*\.md$/.test(path) || ['scripts/selective-builds.mjs', 'scripts/current-downloads.mjs'].includes(path)) return false;
   if (path.startsWith('apps/windows/') || path.startsWith('tests/windows/') || /^scripts\/.*windows.*\.(?:mjs|ps1)$/.test(path) || path === '.config/dotnet-tools.json') return platform === 'windows';
   if (path.startsWith('apps/android/') || path === 'contracts/android-release.schema.json') return platform === 'android';
   // Server/web do not compile into either native client (relative authenticated API).

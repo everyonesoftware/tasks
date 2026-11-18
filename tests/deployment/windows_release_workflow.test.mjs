@@ -9,6 +9,19 @@ function job(name) {
   return match[1];
 }
 
+test('serialized release job refreshes downloads even when no native artifacts changed', () => {
+  const release = job('release');
+  const condition = release.split('\n').find(line => line.startsWith('    if:'));
+  assert.doesNotMatch(condition, /outputs.build_android|outputs.build_windows/);
+  assert.match(workflow, /group: publish-main\n  cancel-in-progress: false/);
+  assert.match(release, /actions: read/);
+  assert.match(release, /- name: Publish GitHub release\n        if: needs.validate.outputs.build_android == 'true' \|\| needs.validate.outputs.build_windows == 'true'/);
+  assert.match(release, /node scripts\/current-downloads.mjs --repository "\$GITHUB_REPOSITORY" --publish/);
+  assert.match(release, /--output-directory "\$RUNNER_TEMP\/tasks-downloads"/);
+  assert.match(job('validate'), /node --test tests\/deployment\/current-downloads.test.mjs/);
+  assert.ok(release.indexOf('node scripts/current-downloads.mjs') > release.indexOf('- name: Publish GitHub release'));
+});
+
 test('main push and manual releases gate only changed platforms and require selected jobs to succeed', () => {
   assert.match(workflow, /push:\n    branches: \[main\]\n  workflow_dispatch:/);
   assert.match(job('validate'), /if: github.ref == 'refs\/heads\/main'/);

@@ -58,6 +58,7 @@ jobs:
         run: |
           node --test tests/deployment/windows_release_workflow.test.mjs
           node --test tests/deployment/selective-builds.test.mjs
+          node --test tests/deployment/current-downloads.test.mjs
       - name: Test Windows packaging and lifecycle helpers
         run: node --test tests/windows/*.test.mjs
 
@@ -301,11 +302,12 @@ jobs:
 
   release:
     needs: [validate, android, windows]
-    if: ${{ !cancelled() && needs.validate.result == 'success' && (needs.android.result == 'success' || needs.android.result == 'skipped') && (needs.windows.result == 'success' || needs.windows.result == 'skipped') && (needs.validate.outputs.build_android == 'true' || needs.validate.outputs.build_windows == 'true') }}
+    if: ${{ !cancelled() && needs.validate.result == 'success' && (needs.android.result == 'success' || needs.android.result == 'skipped') && (needs.windows.result == 'success' || needs.windows.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     env:
       DAYMARK_VERSION: ${{ needs.validate.outputs.version }}
       BUILD_ANDROID: ${{ needs.validate.outputs.build_android }}
@@ -328,6 +330,7 @@ jobs:
           path: dist/windows
           digest-mismatch: error
       - name: Publish GitHub release
+        if: needs.validate.outputs.build_android == 'true' || needs.validate.outputs.build_windows == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -381,6 +384,11 @@ jobs:
             grep -Fxq "${asset##*/}" <<< "$assets"
           done
           echo "Published $tag: Android selected=$BUILD_ANDROID, Windows selected=$BUILD_WINDOWS; build $DAYMARK_VERSION ($GITHUB_SHA). Unchanged outputs remain in their original releases." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refresh current download tables
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/current-downloads.mjs --repository "$GITHUB_REPOSITORY" --publish --output-directory "$RUNNER_TEMP/tasks-downloads"
 
   services_notify:
     name: Notify Services (publication remains separate)

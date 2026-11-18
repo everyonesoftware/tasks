@@ -115,6 +115,7 @@ test('platform classification keeps native inputs separate and treats unknown in
     ['contracts/auth-and-updates.md', false, false],
     ['AGENTS.md', false, false],
     ['scripts/selective-builds.mjs', false, false],
+    ['scripts/current-downloads.mjs', false, false],
     ['tests/deployment/selective-builds.test.mjs', false, false],
     ['tests/deployment/github_release_workflow_test.go', false, false],
     ['tests/deployment/windows_release_workflow.test.mjs', false, false],

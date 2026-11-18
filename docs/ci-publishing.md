@@ -12,6 +12,11 @@ lifecycle gate run when selected. Only then does it create a stable GitHub Relea
 with the selected client outputs. It does not deploy a server, modify live databases, or install on personal
 devices. The installer gate uses only a disposable hosted Windows runner.
 
+The same serialized release job refreshes the README and current release's
+[Current downloads table](CURRENT-DOWNLOADS.md) from verified publications.
+Docs-only/no-native-change runs can repair those tables without creating a native
+release; Android and Windows retain their independent published versions and URLs.
+
 ## Shared version
 
 `bash scripts/build-version.sh` computes `git rev-list --count HEAD` from a full

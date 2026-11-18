@@ -1,8 +1,24 @@
 # Tasks
 
+<!-- current-downloads:start -->
+## Current downloads
+
+Each platform keeps its newest verified manifest-backed publication; versions may differ.
+
+| Platform | Version | Download | Status |
+| --- | --- | --- | --- |
+| Windows x64 | 0.1.25 | [Installer (.exe)](https://github.com/everyonesoftware/tasks/releases/download/v25/TasksWindows-win-x64-Setup.exe) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v25/TasksWindows-win-x64-Setup.exe.sha256) | Unsigned; Windows may show an unknown-publisher/SmartScreen warning. |
+| Android | 24 | [APK](https://github.com/everyonesoftware/tasks/releases/download/v24/Tasks-24.apk) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v24/SHA256SUMS) | Signed with the Tasks release key. |
+| Web / server | — | [Deployment documentation](https://github.com/everyonesoftware/tasks/blob/main/docs/docker-deployment.md) | Self-hosted together; no standalone web installer. |
+
+Verify SHA-256 checksums before installation. Unchanged platforms retain their original release, version and source identity. This table is not an in-app update feed.
+<!-- current-downloads:end -->
+
 A personal task app for web, native Android, and a native Windows client in development, using the approved **Focus + queue** design: one Current task, a daily progress bar, and a queue of what is still due.
 
 Tasks is the new product name for Daymark, not a new installation identity. Existing databases, Android app ID/signing identity, sessions and `DAYMARK_*` configuration names stay unchanged; see [Rebranding and compatibility](docs/rebranding.md).
+
+The download tables refresh automatically from verified platform publications; see [download discovery and release-note automation](docs/CURRENT-DOWNLOADS.md).
 
 ## Scope
 
