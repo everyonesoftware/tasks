@@ -5,6 +5,29 @@ namespace Tasks.Update.Tests;
 public sealed class WindowsControllerTests
 {
     [Fact]
+    public async Task Unchecked_checking_failed_and_not_installed_never_claim_current()
+    {
+        var backend = new Backend();
+        using var controller = new WindowsUpdateController(backend, () => Task.CompletedTask);
+        Assert.Equal(WindowsUpdatePhase.Idle, controller.Status.Phase);
+        Assert.DoesNotContain("No newer", controller.Status.Message);
+        var pending = new TaskCompletionSource<Version?>();
+        backend.Check = () => pending.Task;
+        var check = controller.CheckAsync();
+        Assert.Equal(WindowsUpdatePhase.Checking, controller.Status.Phase);
+        Assert.DoesNotContain("No newer", controller.Status.Message);
+        pending.SetException(new HttpRequestException("private transport failure"));
+        await check;
+        Assert.Equal(WindowsUpdatePhase.Error, controller.Status.Phase);
+        Assert.DoesNotContain("No newer", controller.Status.Message);
+        backend.IsInstalled = false;
+        await controller.CheckAsync();
+        Assert.Equal(WindowsUpdatePhase.NotInstalled, controller.Status.Phase);
+        Assert.DoesNotContain("No newer", controller.Status.Message);
+        Assert.Equal(new[] { "check" }, backend.Calls);
+    }
+
+    [Fact]
     public async Task Explicit_check_download_and_restart_are_separate_and_preserve_session_before_apply()
     {
         var backend = new Backend();
@@ -44,6 +67,7 @@ public sealed class WindowsControllerTests
         using var controller = new WindowsUpdateController(backend, () => throw new Exception("must not save"));
         await controller.CheckAsync(); await controller.DownloadAsync(); await controller.RestartAsync();
         Assert.Equal(WindowsUpdatePhase.Current, controller.Status.Phase);
+        Assert.Equal("No newer Windows version is available.", controller.Status.Message);
         Assert.Equal(new[] { "check" }, backend.Calls);
     }
     [Fact]
@@ -94,7 +118,7 @@ public sealed class WindowsControllerTests
     private sealed class Backend : IWindowsUpdateBackend
     {
         public List<string> Calls = [];
-        public bool IsInstalled => true;
+        public bool IsInstalled { get; set; } = true;
         public Version CurrentVersion => new(0,1,19);
         public Version? Offer = new(0,1,20);
         public Func<Task<Version?>>? Check;

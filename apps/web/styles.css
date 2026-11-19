@@ -612,6 +612,11 @@ footer button {
 .settings-panel dd { margin:0 0 16px; overflow-wrap:anywhere; }
 .settings-panel dt { font-size:14px; color:var(--muted); }
 .settings-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.version-panel { max-width:680px; margin:24px 0; }
+.version-panel h2 { font-size:20px; font-weight:600; margin-bottom:14px; }
+.version-card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:22px 24px; }
+.version-card h3 { font-size:23px; font-weight:600; color:var(--accent); margin-bottom:5px; }
+.version-card p { font-size:16px; color:var(--muted); margin-bottom:0; }
 input[readonly] { color:var(--muted); overflow:hidden; }
 @media(max-width:760px) { .sidebar nav { grid-template-columns:repeat(4,minmax(0,1fr)); gap:2px; padding-inline:6px; } .sidebar nav button { font-size:16px; padding-inline:3px; } .settings-panel { padding:20px; } }
 .welcome-screen .sidebar { display:none; }

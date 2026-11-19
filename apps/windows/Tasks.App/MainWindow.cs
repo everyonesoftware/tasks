@@ -55,7 +55,7 @@ internal sealed class MainWindow : Window
         updates = new WindowsUpdateController(new WindowsUpdateBackend(), () => client.PrepareForUpdateRestartAsync(lifetime.Token));
         updatesPanel = new WindowsUpdatesPanel(root, DispatcherQueue, RestartUpdatesAsync);
         updatesPanel.Bind(updates, () => busy || operations.IsEditorOpen || operations.IsRestarting);
-        Find<TextBlock>("InstalledVersion").Text = WindowsAppVersion.FromAssembly(typeof(MainWindow).Assembly).Display;
+        Find<TextBlock>("CurrentVersion").Text = $"Current Version: {WindowsAppVersion.FromAssembly(typeof(MainWindow).Assembly).Display}";
         operations.Changed += () => { if (!closed) SetBusy(busy); };
         WireControls();
         refreshTimer = DispatcherQueue.CreateTimer();

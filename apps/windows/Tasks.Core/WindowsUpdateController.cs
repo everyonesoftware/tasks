@@ -45,7 +45,7 @@ public sealed class WindowsUpdateController : IDisposable
             var version = await backend.CheckAsync();
             Set(version is not null && version > backend.CurrentVersion
                 ? new(WindowsUpdatePhase.Available, $"Tasks {version} is available. Download it to continue.", version)
-                : new(WindowsUpdatePhase.Current, "No newer Windows update is available."));
+                : new(WindowsUpdatePhase.Current, "No newer Windows version is available."));
         }
         catch { Set(new(WindowsUpdatePhase.Error, "Could not check for updates. Check your internet connection or try again later; GitHub may be rate-limiting requests.")); }
         finally { Interlocked.Exchange(ref busy, 0); }

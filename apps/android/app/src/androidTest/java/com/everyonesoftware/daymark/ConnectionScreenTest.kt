@@ -29,8 +29,8 @@ class ConnectionScreenTest {
   var switched=false
   compose.setContent { TasksTheme { TasksApp(UiState(session=Session("https://example.org","Alice","token"),settings=true,installedName="0.2.0",installedCode=2),Actions(onLogin={_,_,_,_ -> switched=true})) } }
   compose.onNodeWithText("Connection").assertExists()
-  compose.onNodeWithText("App updates").performScrollTo().assertExists()
-  compose.onNodeWithText("0.2.0 · Build 2").assertExists()
+  compose.onNodeWithText("Current Version: 0.2.0").performScrollTo().assertExists()
+  compose.onNodeWithText("Check now").assertExists()
   compose.onNodeWithText("Edit connection").performScrollTo().performClick()
   compose.onNodeWithTag("server").performTextReplacement("https://new.example.org")
   compose.onNodeWithTag("password").performTextInput("password")

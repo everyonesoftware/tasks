@@ -51,8 +51,10 @@ try {
   await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
   let sequence=0;
   const pending=new Map(), runtimeErrors=[];
+  let pausedHealth;
   socket.addEventListener('message',event=>{
     const reply=JSON.parse(event.data);
+    if(reply.method==='Fetch.requestPaused') pausedHealth=reply.params.requestId;
     if(reply.method==='Runtime.exceptionThrown') runtimeErrors.push(reply.params.exceptionDetails.text);
     const entry=pending.get(reply.id);
     if(!entry)return;
@@ -102,7 +104,9 @@ try {
     }
     checks.push(`${label}: current title opens existing popup by pointer, Enter and Space; focus restored`);
   }
-  await cdp('Network.enable');await cdp('Runtime.enable');await navigate();
+  await cdp('Network.enable');await cdp('Runtime.enable');
+  await cdp('Fetch.enable',{patterns:[{urlPattern:'*/health',requestStage:'Request'}]});
+  await navigate();
   assert.equal(await js('document.title'), 'Tasks');
   assert.equal(await js("document.querySelector('.brand').getAttribute('aria-label')"), 'Tasks home');
   assert.equal(await js("document.querySelector('#signin-heading').textContent"), 'Sign in to Tasks');
@@ -110,6 +114,15 @@ try {
   assert.ok(await js("document.querySelector('#password').value==='' && document.querySelector('#server-origin').readOnly"));
   checks.push('first-login and current origin');
   await login('acceptance');await wait("!!document.querySelector('[data-complete]')");
+  await waitFor(()=>!!pausedHealth,'paused health request');
+  await js("document.querySelector('[data-view=settings]').click()");
+  assert.equal(await js("document.querySelector('#current-version-heading').textContent"),'Current Version: Checking…','unresolved metadata never invents an installed version');
+  await cdp('Fetch.continueRequest',{requestId:pausedHealth});
+  await cdp('Fetch.disable');
+  const actualVersion=(await api('/health')).version;
+  await wait(`document.querySelector('#current-version-heading').textContent===${JSON.stringify('Current Version: '+actualVersion)}`);
+  await js("document.querySelector('[data-view=today]').click()");
+  checks.push('pending /health shows Checking… then the actual server version');
   assert.equal(await js("!!document.querySelector('#view img') || !!window.xss"),false);
   assert.equal(await js("fetch('/api/auth/session').then(r=>r.json()).then(x=>x.username)"),'acceptance');
   assert.ok(!(await js('document.cookie')).includes('daymark_session'));
@@ -201,8 +214,36 @@ try {
   checks.push('completion and undo independently read back');
   await js("document.querySelector('[data-view=settings]').click()");
   const buildVersion=(await api('/health')).version;
-  await wait(`document.querySelector('[aria-labelledby=about-heading]').textContent.includes(${JSON.stringify('Tasks web · Version '+buildVersion)})`);
-  checks.push('web About reports the actual server build version');
+  assert.equal(await js("document.querySelector('#current-version-heading')?.textContent"),'Current Version: '+buildVersion,'Settings heading uses the actual /health version');
+  assert.equal(await js("document.querySelector('.version-card h3')?.textContent"),'Web app');
+  assert.equal(await js("document.querySelector('.version-card p')?.textContent"),'This version is served by your Tasks server.');
+  assert.equal(await js("document.querySelector('[aria-labelledby=current-version-heading]')?.querySelectorAll('a,button').length"),0,'web version panel has no native release link or check/install action');
+  assert.equal(await js("/About|Tasks web · Version|Android|Up to date|No newer/.test(document.querySelector('[aria-labelledby=current-version-heading]').textContent)"),false);
+  checks.push('Current Version matches /health; Web app card has exact support and no native update links/actions/claims');
+  const settingsScreenshots=[];
+  for (const [width,height] of [[320,900],[390,1000],[1440,1100]]) {
+    await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
+    const layout=await js(`(()=>{
+      const panel=document.querySelector('.version-panel'), card=panel.querySelector('.version-card');
+      const style=getComputedStyle(card), r=card.getBoundingClientRect(), heading=panel.querySelector('h2').getBoundingClientRect();
+      return {background:style.backgroundColor,border:style.borderRadius,padding:style.paddingTop,height:r.height,
+        below:r.top>=heading.bottom,inside:r.left>=0 && r.right<=innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,
+        connection:!!document.querySelector('#edit-connection') && !!document.querySelector('#test-session') && !!document.querySelector('#sign-out')};
+    })()`);
+    assert.equal(layout.background,'rgb(43, 57, 63)','version card has approved filled slate background');
+    assert.equal(layout.border,'8px');
+    assert.equal(layout.padding,'22px');
+    assert.ok(layout.height<=150,'version card stays compact even on a narrow phone');
+    assert.ok(layout.below && layout.inside && !layout.overflow && layout.connection,`Settings layout and connection controls at ${width}px`);
+    await js('window.scrollTo(0,document.documentElement.scrollHeight)');
+    assert.ok(await js("(()=>{const card=document.querySelector('.version-card').getBoundingClientRect();const nav=document.querySelector('#navigation').getBoundingClientRect();return card.top>=0 && card.bottom<=innerHeight && (innerWidth>=760 || card.bottom<=nav.top)})()"),'version card scrolls completely above fixed phone navigation');
+    const path=join(root,`web-settings-${width}.png`);
+    await writeFile(path,Buffer.from((await cdp('Page.captureScreenshot',{format:'png'})).data,'base64'));
+    settingsScreenshots.push(path);
+    await js('window.scrollTo(0,0)');
+  }
+  await cdp('Emulation.clearDeviceMetricsOverride');
+  checks.push('filled compact slate version card below heading, intact connection controls, no overflow at 320/390/1440px');
   await js("document.querySelector('[data-view=today]').click();document.querySelector('#view [data-complete]').click()");await wait("document.querySelector('progress').value===1");
   await js("document.querySelector('#completed').open=true;document.querySelector('[data-undo]').click()");await wait("document.querySelector('progress').value===0");
   await js("document.querySelector('[data-view=settings]').click();document.querySelector('#edit-connection').click();window.confirm=()=>true");
@@ -251,7 +292,18 @@ try {
   checks.push('320/390/1440px layouts');
   const screenshot=join(root,'web-acceptance.png');
   await writeFile(screenshot,Buffer.from((await cdp('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await cdp('Network.setBlockedURLs',{urls:['*/health']});
+  await navigate();await wait("!!document.querySelector('.focus-card')");
   await js("document.querySelector('[data-view=settings]').click()");
+  await wait("document.querySelector('#current-version-heading').textContent==='Current Version: Unavailable'");
+  assert.equal(await js("document.querySelector('.version-card p').textContent"),'This version is served by your Tasks server.');
+  const unavailableScreenshot=join(root,'web-settings-unavailable.png');
+  await writeFile(unavailableScreenshot,Buffer.from((await cdp('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await cdp('Network.setBlockedURLs',{urls:[]});
+  await navigate();await wait("!!document.querySelector('.focus-card')");
+  await js("document.querySelector('[data-view=settings]').click()");
+  await wait(`document.querySelector('#current-version-heading').textContent===${JSON.stringify('Current Version: '+actualVersion)}`);
+  checks.push('unavailable /health is honest without blocking tasks; reload recovers the live version');
   await cdp('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:-1,uploadThroughput:-1});
   await js("document.querySelector('#sign-out').click()");await wait("document.querySelector('#notice').textContent.includes('revocation could not be confirmed')");
   assert.equal(await js("document.querySelector('#occurrence-title').textContent+document.querySelector('#occurrence-content').textContent"),'','offline sign-out clears hidden popup task data');
@@ -265,7 +317,7 @@ try {
   assert.equal(await js("document.querySelector('#occurrence-title').textContent+document.querySelector('#occurrence-content').textContent"),'','sign-out clears hidden popup task data');
   checks.push('offline logout survives reload, explicit re-login and server logout revokes cookie');
   assert.deepEqual(runtimeErrors,[],'no uncaught browser exceptions');
-  const result={passed:true,scope:'Actual Go HTTP API and real Chromium; isolated accounts/database only',checks,screenshot,currentPopupScreenshot};
+  const result={passed:true,scope:'Actual Go HTTP API and real Chromium; isolated accounts/database only',checks,screenshot,currentPopupScreenshot,settingsScreenshots,unavailableScreenshot};
   await writeFile(join(root,'web-result.json'),JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result,null,2));
 } finally {

@@ -1,12 +1,20 @@
 package com.everyonesoftware.daymark
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
@@ -63,32 +71,47 @@ import androidx.compose.ui.unit.dp
     Text("All task data stays on the server. There’s no local task database on this device.")
     TextButton(onClick={logout=true},enabled=!state.busy) {Text("Sign out")}
    } }
-   Card { Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    Text("App updates",style=MaterialTheme.typography.titleLarge)
-    Text("Installed version",style=MaterialTheme.typography.bodySmall)
-    Text("${state.installedName} · Build ${state.installedCode}")
+   Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     val u=state.update
-    Text(when(u.status) {
-     UpdateStatus.IDLE -> "Check GitHub for a stable release."
-     UpdateStatus.CHECKING -> "Checking GitHub…"
-     UpdateStatus.NO_RELEASES -> "No published releases yet."
-     UpdateStatus.FAILED -> u.error ?: "Couldn’t check GitHub. Installed version is unchanged."
-     UpdateStatus.CURRENT -> "You’re up to date."
-     UpdateStatus.AVAILABLE -> "Version ${u.release?.manifest?.versionName} available · Build ${u.release?.manifest?.versionCode}"
-     UpdateStatus.DOWNLOADING -> "Downloading update… ${u.downloaded} / ${u.release?.size} bytes"
-     UpdateStatus.READY -> "Verified update ready. Android will confirm installation."
-     UpdateStatus.CANCELLED -> "Download cancelled."
-    })
-    u.release?.let { release ->
-     if(u.status in setOf(UpdateStatus.AVAILABLE,UpdateStatus.DOWNLOADING,UpdateStatus.READY,UpdateStatus.CANCELLED)) {
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+     Text("Current Version: ${state.installedName}",modifier=Modifier.weight(1f).semantics { heading() },style=MaterialTheme.typography.titleMedium)
+     OutlinedButton(onClick=actions.onCheckUpdates,enabled=u.status !in setOf(UpdateStatus.CHECKING,UpdateStatus.DOWNLOADING)) {Text(if(u.status==UpdateStatus.CHECKING) "Checking…" else "Check now")}
+    }
+    Surface(
+     modifier=Modifier.fillMaxWidth().testTag("updates-status").semantics { liveRegion = LiveRegionMode.Polite },
+     shape=RoundedCornerShape(12.dp),color=Color(0xFF2B393F),border=BorderStroke(1.dp,Color(0xFF3B4B50))
+    ) { Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+     Text(when(u.status) {
+      UpdateStatus.IDLE -> "Check for updates"
+      UpdateStatus.CHECKING -> "Checking for updates"
+      UpdateStatus.NO_RELEASES -> "No published releases yet."
+      UpdateStatus.FAILED -> "Update failed"
+      UpdateStatus.CURRENT -> "Up to date"
+      UpdateStatus.AVAILABLE -> "Update available"
+      UpdateStatus.DOWNLOADING -> "Downloading update"
+      UpdateStatus.READY -> "Ready to install"
+      UpdateStatus.CANCELLED -> "Download cancelled"
+     },style=MaterialTheme.typography.titleLarge,color=when(u.status) {
+      UpdateStatus.CURRENT -> MaterialTheme.colorScheme.primary
+      UpdateStatus.FAILED -> MaterialTheme.colorScheme.error
+      else -> MaterialTheme.colorScheme.onSurface
+     })
+     Text(when(u.status) {
+      UpdateStatus.IDLE -> "Check whether a newer version is available."
+      UpdateStatus.CHECKING -> "Checking for a newer version…"
+      UpdateStatus.NO_RELEASES -> "No Android release is available to download."
+      UpdateStatus.FAILED -> u.error ?: "Try again. Your installed version has not changed."
+      UpdateStatus.CURRENT -> "No newer Android version is available."
+      UpdateStatus.AVAILABLE,UpdateStatus.READY,UpdateStatus.CANCELLED -> "Tasks ${u.release?.manifest?.versionName.orEmpty()}"
+      UpdateStatus.DOWNLOADING -> "${u.downloaded} / ${u.release?.size} bytes"
+     },color=MaterialTheme.colorScheme.onSurfaceVariant)
+     if(u.status==UpdateStatus.CHECKING) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
+     if(u.status==UpdateStatus.DOWNLOADING) LinearProgressIndicator(progress={u.downloaded.toFloat()/(u.release?.size ?: 1).coerceAtLeast(1)},modifier=Modifier.fillMaxWidth())
+     if(u.release!=null && u.status in setOf(UpdateStatus.AVAILABLE,UpdateStatus.DOWNLOADING,UpdateStatus.READY,UpdateStatus.CANCELLED)) {
       Button(onClick={review=true}) {Text("Review update")}
      }
-    }
-    TextButton(onClick=actions.onCheckUpdates,enabled=u.status !in setOf(UpdateStatus.CHECKING,UpdateStatus.DOWNLOADING)) {Text("Check for updates")}
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Text("Check at app launch",modifier=Modifier.weight(1f));Switch(state.autoCheck,actions.onAutoCheck)}
-    Text("Release source: github.com/everyonesoftware/tasks",style=MaterialTheme.typography.bodySmall)
-    Text("Downloads and installation always need your confirmation.")
-   } }
+    } }
+   }
   }
  }
  if(review) androidx.compose.ui.window.Dialog(onDismissRequest={review=false},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {

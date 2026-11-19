@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 const root = new URL('../../apps/web/', import.meta.url);
 const read = name => readFile(new URL(name, root), 'utf8');
 
-test('web shell, sign-in, Settings About and PWA consistently identify Tasks', async () => {
+test('web shell, sign-in, Settings Current Version and manifest consistently identify Tasks', async () => {
   const [html, app, icon, manifestSource, readme] = await Promise.all(
     ['index.html', 'app.mjs', 'icon.svg', 'manifest.webmanifest', 'README.md'].map(read)
   );
@@ -18,7 +18,9 @@ test('web shell, sign-in, Settings About and PWA consistently identify Tasks', a
   assert.match(app, /Welcome to Tasks\./);
   assert.match(app, /Connecting to your Tasks server\./);
   assert.match(app, /Tasks never saves your password\./);
-  assert.match(app, /<h2 id="about-heading">About<\/h2><p>Tasks web · Version /);
+  assert.ok(app.includes('<h2 id="current-version-heading">Current Version: ${esc(buildVersion)}</h2>'));
+  assert.ok(app.includes('<h3>Web app</h3><p>This version is served by your Tasks server.</p>'));
+  assert.doesNotMatch(app, /about-heading|Tasks web · Version|Android releases|github\.com\/everyonesoftware\/tasks\/releases/);
   assert.match(icon, /role="img"/);
   assert.match(icon, /aria-label="Tasks"/);
   const manifest = JSON.parse(manifestSource);

@@ -99,24 +99,20 @@
           <TextBlock Text="Your session is protected for this Windows user. Passwords and task data are never saved on this device." TextWrapping="Wrap" Foreground="{StaticResource Muted}" />
           <StackPanel Orientation="Horizontal" Spacing="10"><Button x:Name="Refresh" Content="Test connection" /><Button x:Name="SignOut" Content="Sign out" /></StackPanel>
           <TextBlock Text="To change server or account, sign out first." Foreground="{StaticResource Muted}" FontSize="12" />
-          <Border Background="#26353A" BorderBrush="#3B4B50" BorderThickness="1" CornerRadius="8" Padding="24" Margin="0,10,0,0">
-            <StackPanel Spacing="14">
-              <TextBlock Text="Version &amp; updates" FontSize="20" FontWeight="SemiBold" />
-              <TextBlock x:Name="InstalledVersion" Foreground="{StaticResource Muted}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-              <TextBlock x:Name="UpdateStatus" Text="Check for Windows updates when you choose." TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+          <Grid ColumnSpacing="20">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="CurrentVersion" Text="Current Version:" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap" />
+            <Button Grid.Column="1" x:Name="CheckUpdates" Content="Check for updates" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          </Grid>
+          <Border x:Name="WindowsUpdateCard" Background="#2B393F" BorderBrush="#3B4B50" BorderThickness="1" CornerRadius="8" Padding="24,22">
+            <StackPanel Spacing="8">
+              <TextBlock x:Name="UpdateTitle" Text="Not checked yet" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock x:Name="UpdateStatus" Text="Check for Windows updates when you choose." Foreground="{StaticResource Muted}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
               <ProgressBar x:Name="UpdateProgress" IsIndeterminate="True" Visibility="Collapsed" Height="3" Foreground="{StaticResource Mint}" />
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button x:Name="CheckUpdates" Content="Check for updates" />
+              <StackPanel x:Name="UpdateActions" Orientation="Horizontal" Spacing="10" Visibility="Collapsed">
                 <Button x:Name="DownloadUpdate" Content="Download update" Visibility="Collapsed" Background="{StaticResource Mint}" Foreground="#1F392B" />
                 <Button x:Name="RestartUpdate" Content="Restart and install" Visibility="Collapsed" />
               </StackPanel>
-              <TextBlock x:Name="LastUpdateCheck" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
-              <TextBlock Text="Download updates here, then choose Restart and install. No background download or automatic installation. Finish any task edits before restarting." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
-              <Expander x:Name="ReleaseNotesPanel" Header="Release notes" Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <ScrollViewer MaxHeight="260" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                  <TextBlock x:Name="ReleaseNotes" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{StaticResource Muted}" />
-                </ScrollViewer>
-              </Expander>
             </StackPanel>
           </Border>
         </StackPanel>
