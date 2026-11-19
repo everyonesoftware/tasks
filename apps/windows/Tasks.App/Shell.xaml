@@ -83,7 +83,7 @@
                 <TextBlock x:Name="CurrentTitle" FontFamily="Georgia" FontSize="32" TextWrapping="Wrap" Foreground="#EAF3E9" />
               </Button>
               <TextBlock x:Name="CurrentMetadata" Grid.Row="2" FontSize="12" Foreground="#C1D8C6" TextWrapping="Wrap" />
-              <TextBlock x:Name="CurrentNotes" Grid.Row="3" FontSize="14" TextWrapping="Wrap" Foreground="#DFEBE0" Margin="0,20,0,12" />
+
               <Button x:Name="MarkDone" Grid.Row="4" HorizontalAlignment="Right" Content="✓  Mark done" Background="{StaticResource Mint}" Foreground="#1F392B" FontWeight="SemiBold" Padding="16,10" Margin="0,16,0,0" />
             </Grid>
           </Border>
@@ -91,6 +91,8 @@
           <StackPanel x:Name="CompletedPanel" Spacing="12"><Button x:Name="CompletedToggle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Muted}" AutomationProperties.Name="Completed today, collapsed" /><StackPanel x:Name="CompletedList" /></StackPanel>
         </StackPanel>
         <StackPanel x:Name="ListPanel" Spacing="12" Visibility="Collapsed" />
+        <StackPanel x:Name="TaskDetailsPanel" Spacing="20" Visibility="Collapsed" />
+        <StackPanel x:Name="TaskEditorPanel" Spacing="18" Visibility="Collapsed" />
         <StackPanel x:Name="SettingsPanel" Spacing="18" Visibility="Collapsed">
           <TextBlock Text="Connection" FontSize="20" FontWeight="SemiBold" />
           <TextBlock x:Name="ConnectionDetails" TextWrapping="Wrap" Foreground="{StaticResource Muted}" />

@@ -166,15 +166,42 @@ public sealed class TasksClient : IDisposable
         var result = await Request<DayState>(p, HttpMethod.Post, "/api/occurrences/" + action, new { taskId = occurrence.TaskId, dueDate = occurrence.DueDate, date = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) }, ct).ConfigureAwait(false);
         State = ValidateState(result, date);
     }, ct);
-    public Task AddTaskAsync(TaskDraft draft, DateOnly date, CancellationToken cancellationToken = default) => ConnectedOperation(async p =>
+    public Task<string> AddTaskAsync(TaskDraft draft, DateOnly date, CancellationToken cancellationToken = default)
+        => AddTaskAsync(draft, date, _ => { }, () => true, cancellationToken);
+
+    // Capture an acknowledged identity before readback can fail. The workspace owns
+    // the callback's memory-only draft; it must never infer identity from a snapshot.
+    internal async Task<string> AddTaskAsync(TaskDraft draft, DateOnly date, Action<string> acknowledged,
+        Func<bool> canCreate, CancellationToken cancellationToken)
     {
-        var created = await Request<TaskItem>(p, HttpMethod.Post, "/api/tasks", draft, cancellationToken).ConfigureAwait(false);
-        if (created is null) throw new TasksClientException();
-        State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
-    }, cancellationToken);
+        string? createdId = null;
+        await ConnectedOperation(async p =>
+        {
+            if (!canCreate()) throw new TasksClientException();
+            var created = await Request<TaskItem>(p, HttpMethod.Post, "/api/tasks", draft, cancellationToken).ConfigureAwait(false);
+            if (created is null || string.IsNullOrWhiteSpace(created.Id)) throw new TasksClientException();
+            createdId = created.Id;
+            acknowledged(created.Id);
+            State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+        return createdId!;
+    }
     public Task EditTaskAsync(string taskId, TaskDraft draft, DateOnly date, CancellationToken cancellationToken = default) => ConnectedOperation(async p =>
     {
         var updated = await Request<TaskItem>(p, HttpMethod.Put, "/api/tasks/" + Uri.EscapeDataString(taskId), draft, cancellationToken).ConfigureAwait(false);
+        if (updated is null) throw new TasksClientException();
+        State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
+    }, cancellationToken);
+    // The native editor owns only name/schedule. Resolve hidden values after acquiring
+    // the same gate as refresh; a draft's original record may already be obsolete.
+    internal Task EditWorkspaceTaskAsync(string taskId, TaskDraft draft, DateOnly date,
+        Func<bool> canEdit, CancellationToken cancellationToken) => ConnectedOperation(async p =>
+    {
+        if (!canEdit() || State?.Date != date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))
+            throw new TasksClientException();
+        var current = State.Tasks.FirstOrDefault(t => t.Id == taskId) ?? throw new TasksClientException();
+        var payload = draft with { Notes = current.Notes, Category = current.Category, Priority = current.Priority };
+        var updated = await Request<TaskItem>(p, HttpMethod.Put, "/api/tasks/" + Uri.EscapeDataString(taskId), payload, cancellationToken).ConfigureAwait(false);
         if (updated is null) throw new TasksClientException();
         State = await ReadState(p, date, cancellationToken).ConfigureAwait(false);
     }, cancellationToken);

@@ -65,9 +65,11 @@ test('Windows session adapter encrypts a single envelope without persisting task
 
 test('native actions use the authenticated client and clear password inputs', () => {
   const code = read('Tasks.App/MainWindow.cs');
-  for (const method of ['SignInAsync', 'RestoreAsync', 'RefreshAsync', 'CompleteAsync', 'UndoAsync', 'AddTaskAsync', 'SignOutAsync', 'NotNow']) {
+  for (const method of ['SignInAsync', 'RestoreAsync', 'RefreshAsync', 'CompleteAsync', 'UndoAsync', 'SignOutAsync', 'NotNow']) {
     assert.ok(code.includes(`client.${method}(`), `Missing wired client action ${method}`);
   }
+  assert.match(code, /workspace.SaveAsync\(client, payload, date/);
+  assert.match(read('Tasks.Core/TaskWorkspace.cs'), /client.AddTaskAsync\(payload, invocationDate/);
   assert.match(code, /Password = string.Empty/);
   assert.match(code, /if \(busy \|\| closed\) return/);
   assert.match(code, /client\.State/);
@@ -77,17 +79,18 @@ test('native actions use the authenticated client and clear password inputs', ()
 test('idle editor is separate from network operations and both monitor triggers may refresh it', () => {
   const code = read('Tasks.App/MainWindow.cs');
   assert.doesNotMatch(code, /private Task AddAsync\(\) => RunAsync/,
-    'An idle modal draft must not hold the network operation gate');
+    'An idle workspace draft must not hold the network operation gate');
   const timer = code.slice(code.indexOf('refreshTimer.Tick'), code.indexOf('root.Loaded'));
   const activation = code.slice(code.indexOf('Activated +='), code.indexOf('Closed +='));
   for (const monitor of [timer, activation]) assert.match(monitor, /allowDuringEditor: true/);
   assert.match(code, /operations\.SetConnected\(connected\)/);
   assert.match(code, /editorSubmission: true/);
-  assert.match(code, /if \(!saved\) throw/);
-  assert.match(code, /operations\.Changed \+= UpdateSubmission/);
-  assert.match(code, /operations\.Changed -= UpdateSubmission/);
-  assert.match(code, /dialog\.IsPrimaryButtonEnabled = !saving && operations\.CanSubmit/);
-  assert.match(code, /if \(saving \|\| !operations\.CanSubmit\) return/);
+  assert.match(code, /if \(!saved\)\s*\{[\s\S]*?return;/);
+  assert.match(code, /taskEditor\?\.UpdateSubmission\(operations\)/);
+  assert.match(code, /control is not ScrollViewer/);
+  const editor = read('Tasks.App/TaskEditor.cs');
+  assert.match(editor, /submit\.IsEnabled = !saving && operations\.CanSubmit/);
+  assert.match(editor, /if \(saving \|\| !operations\.CanSubmit\) return/);
 });
 
 test('failed credential deletion exposes a sign-out retry instead of an unusable sign-in form', () => {
@@ -100,7 +103,7 @@ test('failed credential deletion exposes a sign-out retry instead of an unusable
 
 test('sign-out clears native task views before waiting for remote revocation', () => {
   const code = read('Tasks.App/MainWindow.cs');
-  const logout = code.slice(code.indexOf('private Task SignOutAsync'), code.indexOf('private async Task AddAsync'));
+  const logout = code.slice(code.indexOf('private Task SignOutAsync'), code.indexOf('private Task AddAsync'));
   assert.ok(logout.includes('operations.BeginSignOut();'), 'Task access must be suspended immediately');
   assert.ok(logout.indexOf('Render();') < logout.indexOf('await client.SignOutAsync'), 'Clear rendered task views before remote logout');
   assert.ok(code.includes('client.IsConnected && client.State is not null && !operations.IsSigningOut'), 'Render must not resurrect task views during sign-out');

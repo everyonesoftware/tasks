@@ -10,22 +10,22 @@ test('completed disclosure is counted, keyboard accessible, and refresh-safe wit
   assert.ok(code.includes('Completed today ({completed.Length})'));
   assert.ok(code.includes('Visible(completedDisclosure.IsExpanded)'));
 });
-test('row activation opens an explicit action popup with live eligibility checked again on invocation', () => {
+test('dedicated details retain explicit guarded actions rather than implicitly selecting rows', () => {
   assert.ok(code.includes('private Button OccurrenceRow('));
-  for (const label of ['Make current', 'Mark done', 'Undo']) assert.ok(code.includes(`Text = "${label}"`));
-  for (const policy of ['CanFocus', 'CanComplete', 'CanUndo']) assert.ok(code.includes(`TaskActions.${policy}(client.State, occurrence, Today)`));
-  assert.ok(!code.includes('if (occurrence is null) row.Click'));
-  assert.ok(code.includes('No occurrence due today'));
-  assert.ok(code.includes('button.Flyout = menu;'));
-  assert.ok(!code.includes('button.Click += (_, _) => { if (!busy'));
+  for (const label of ['Make current', 'Mark done', 'Undo']) assert.ok(code.includes(`Content = "${label}"`));
+  const actions = code.slice(code.indexOf('private void AddDetailActions'), code.indexOf('private Grid WithOptions'));
+  assert.match(actions, /if \(TaskActions.CanFocus\(client.State, occurrence, Today\)\)/);
+  assert.match(actions, /if \(!CanAct \|\| !TaskActions.CanFocus\(client.State, occurrence, Today\)\) return/);
+  for (const policy of ['CanComplete', 'CanUndo']) assert.ok(actions.includes(`CanAct && TaskActions.${policy}(client.State, occurrence, date)`));
+  assert.match(actions, /else if \(TaskActions.CanUndo/);
+  assert.doesNotMatch(code, /button.Flyout = menu/);
 });
-test('current title is a keyboard-accessible button sharing the explicit row popup without changing heading appearance', () => {
+test('single current title is a keyboard-accessible details button without changing heading appearance', () => {
   const xaml = readFileSync(new URL('../../apps/windows/Tasks.App/Shell.xaml', import.meta.url), 'utf8');
   assert.match(xaml, /<Button x:Name="CurrentTitleActions"[^>]*Padding="0"[^>]*Background="Transparent"[^>]*BorderThickness="0"[^>]*IsTabStop="True"/);
   assert.match(xaml, /<TextBlock x:Name="CurrentTitle"[^>]*FontFamily="Georgia"[^>]*FontSize="32"/);
-  assert.match(code, /AttachOccurrenceActions\(Find<Button>\("CurrentTitleActions"\), current\)/);
-  assert.match(code, /AttachOccurrenceActions\(button, occurrence\)/);
-  assert.match(code, /private void AttachOccurrenceActions\(Button button, Occurrence occurrence\)/);
+  assert.match(code, /Find<Button>\("CurrentTitleActions"\)\.Click/);
+  assert.match(code, /OpenDetails\(current.TaskId, current.OccurrenceId\)/);
   assert.match(code, /Find<Button>\("CurrentTitleActions"\)\.Flyout = null/);
 });
 test('main current completion checks live client eligibility and uses one invocation date', () => {
@@ -41,10 +41,11 @@ test('task options offer accessible Edit and confirmed Archive, reusing the guar
   assert.match(code, /Text = "Archive"/);
   assert.match(code, /PrimaryButtonText = "Archive"/);
   assert.match(code, /DefaultButton = ContentDialogButton.Close/);
-  assert.match(code, /client\.EditTaskAsync\(/);
+  const workspace = readFileSync(new URL('../../apps/windows/Tasks.Core/TaskWorkspace.cs', import.meta.url), 'utf8');
+  assert.match(code, /workspace.SaveAsync\(client, payload, date/);
+  assert.match(workspace, /client\.EditWorkspaceTaskAsync\(/);
   assert.match(code, /client\.ArchiveTaskAsync\(/);
-  assert.match(code, /TaskDraft\? initial = null/);
-  assert.match(code, /title.Text = initial.Title/);
-  assert.match(code, /initial.StartDate/);
+  assert.match(code, /workspace.BeginEdit\(client.State\)/);
+  assert.match(workspace, /ConfirmSaved\(client.State, savedId\)/);
   assert.match(code, /editorSubmission: true/);
 });

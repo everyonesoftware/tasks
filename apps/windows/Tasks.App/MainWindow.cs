@@ -2,6 +2,7 @@ using Microsoft.UI;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Tasks.Core;
@@ -22,6 +23,15 @@ internal sealed class MainWindow : Window
     private readonly SessionStartup startup = new();
     private readonly EditorOperationGate operations = new();
     private readonly CompletedDisclosure completedDisclosure = new();
+    private readonly TaskWorkspace workspace = new();
+    private string? returnFocus;
+    private TaskEditor? taskEditor;
+    private string? detailFocusAction;
+    private string? detailFocusTaskId;
+    private TaskEditDraft? editorFocusDraft;
+    private string? editorFocusField;
+    private bool restoreWorkspaceFocus;
+    private bool workspaceEditorOpen;
     private bool busy => operations.IsBusy;
     private bool closed;
     private string page = "today";
@@ -112,7 +122,11 @@ internal sealed class MainWindow : Window
         Find<TextBox>("ServerUrl").TextChanged += (_, _) =>
             Find<TextBlock>("DevelopmentWarning").Visibility = Visible(Find<TextBox>("ServerUrl").Text.Trim().StartsWith("http:", StringComparison.OrdinalIgnoreCase));
         foreach (var (name, route) in new[] { ("TodayNav", "today"), ("UpcomingNav", "upcoming"), ("RoutinesNav", "routines"), ("SettingsNav", "settings") })
-            Find<Button>(name).Click += (_, _) => { page = route; Render(); };
+            Find<Button>(name).Click += (_, _) => { if (!CanAct) return; workspace.Back(); page = route; Render(); };
+        Find<Button>("CurrentTitleActions").Click += (_, _) =>
+        {
+            if (client.Current is { } current) OpenDetails(current.TaskId, current.OccurrenceId);
+        };
         Find<Button>("MarkDone").Click += async (_, _) =>
         {
             var occurrence = client.Current;
@@ -134,7 +148,7 @@ internal sealed class MainWindow : Window
         Find<Button>("AddTask").Click += async (_, _) => await AddAsync();
         Find<Button>("Refresh").Click += async (_, _) => await RunAsync(ct => client.RefreshAsync(Today, ct), "Connection verified.");
         Find<Button>("RetryConnection").Click += async (_, _) => await RunAsync(
-            ct => startup.NeedsRetry ? RestoreSessionAsync(ct) : client.RefreshAsync(Today, ct));
+            ct => startup.NeedsRetry ? RestoreSessionAsync(ct) : client.RefreshAsync(Today, ct), allowDuringEditor: true);
         Find<Button>("SignOut").Click += async (_, _) => await SignOutAsync();
         Find<Button>("OfflineSignOut").Click += async (_, _) => await SignOutAsync();
     }
@@ -181,29 +195,16 @@ internal sealed class MainWindow : Window
             if (!client.NeedsSignOutRetry) startup.SignedOut();
             operations.EndSignOut();
         }
-    }, "Signed out on this device.");
+    }, "Signed out on this device.", allowDuringEditor: true);
 
-    private async Task AddAsync()
+    private Task AddAsync()
     {
-        if (closed || !client.IsConnected || !operations.TryOpenEditor()) return;
-        try
-        {
-            var added = await TaskEditor.ShowAsync(root.XamlRoot, operations, async draft =>
-            {
-                var saved = await RunAsync(ct => client.AddTaskAsync(draft, Today, ct), editorSubmission: true);
-                if (!saved) throw new InvalidOperationException("The write was not confirmed.");
-            });
-            if (!closed && added) { page = "today"; Find<TextBlock>("Notice").Text = "Task added."; }
-        }
-        catch (Exception)
-        {
-            if (!closed) Find<TextBlock>("Notice").Text = "Could not open the task editor.";
-        }
-        finally
-        {
-            operations.CloseEditor();
-            if (!closed) Render();
-        }
+        if (closed || !client.IsConnected || !operations.TryOpenEditor()) return Task.CompletedTask;
+        workspaceEditorOpen = true;
+        workspace.BeginAdd(page, Today);
+        Render();
+        taskEditor?.FocusName();
+        return Task.CompletedTask;
     }
 
     private Button TaskOptions(string taskId, string title)
@@ -219,28 +220,66 @@ internal sealed class MainWindow : Window
         return button;
     }
 
-    private async Task EditAsync(string taskId)
+    private Task EditAsync(string taskId)
     {
         var task = client.State?.Tasks.FirstOrDefault(t => t.Id == taskId);
-        if (closed || task is null || !operations.TryOpenEditor()) return;
-        try
+        if (closed || task is null || !CanAct || !operations.TryOpenEditor()) return Task.CompletedTask;
+        if (workspace.Mode != "details" || workspace.TaskId != taskId)
         {
-            var initial = new TaskDraft(task.Title, task.Notes, task.Category, task.Repeat, task.Interval, task.StartDate, task.Priority);
-            var saved = await TaskEditor.ShowAsync(root.XamlRoot, operations, async draft =>
-            {
-                if (!await RunAsync(ct => client.EditTaskAsync(taskId, draft, Today, ct), editorSubmission: true))
-                    throw new InvalidOperationException("The write was not confirmed.");
-            }, initial);
-            if (!closed && saved) Find<TextBlock>("Notice").Text = "Task updated.";
+            var occurrence = client.State!.Today.Concat(client.State.Upcoming).FirstOrDefault(o => o.TaskId == taskId);
+            returnFocus = FocusKey(taskId, occurrence?.OccurrenceId);
+            workspace.OpenTask(taskId, page, occurrence?.OccurrenceId);
         }
-        catch (Exception) { if (!closed) Find<TextBlock>("Notice").Text = "Could not open the task editor."; }
-        finally { operations.CloseEditor(); if (!closed) Render(); }
+        if (!workspace.BeginEdit(client.State)) { operations.CloseEditor(); return Task.CompletedTask; }
+        workspaceEditorOpen = true;
+        Render();
+        taskEditor?.FocusName();
+        return Task.CompletedTask;
+    }
+
+    private void CancelWorkspaceEdit()
+    {
+        if (busy || !workspaceEditorOpen) return;
+        workspace.CancelEdit();
+        workspaceEditorOpen = false;
+        operations.CloseEditor();
+        Render();
+        if (workspace.Mode == "details") FocusFirst(Find<StackPanel>("TaskDetailsPanel"));
+        else Find<Button>("AddTask").Focus(FocusState.Programmatic);
+    }
+
+    private async Task SaveWorkspaceAsync(TaskDraft payload)
+    {
+        Render();
+        if (!operations.CanSubmit || workspace.Draft is null) return;
+        var taskId = workspace.TaskId;
+        var date = Today;
+        var confirmed = false;
+        var saved = await RunAsync(async ct => confirmed = await workspace.SaveAsync(client, payload, date, () => Today, ct), editorSubmission: true);
+        if (!saved)
+        {
+            if (!closed && workspace.Draft?.AcknowledgedCreationId is not null)
+                Find<TextBlock>("Notice").Text = "The server accepted this task, but readback is not confirmed. Reconnect, then verify the saved task.";
+            return;
+        }
+        if (!confirmed)
+        {
+            Find<TextBlock>("Notice").Text = "The write could not be matched to a refreshed task. Verify the list before trying again.";
+            return;
+        }
+        workspaceEditorOpen = false;
+        operations.CloseEditor();
+        Render();
+        FocusFirst(Find<StackPanel>("TaskDetailsPanel"));
+        Find<TextBlock>("Notice").Text = taskId is null ? "Task added." : "Task updated.";
     }
 
     private async Task ArchiveAsync(string taskId)
     {
         var task = client.State?.Tasks.FirstOrDefault(t => t.Id == taskId);
-        if (closed || task is null || !operations.TryOpenEditor()) return;
+        if (closed || task is null || !CanAct || !operations.TryOpenEditor()) return;
+        var session = client.Session;
+        var date = Today;
         try
         {
             var dialog = new ContentDialog
@@ -249,13 +288,19 @@ internal sealed class MainWindow : Window
                 Content = $"Archive “{task.Title}”? Its completion history will be kept.",
                 PrimaryButtonText = "Archive", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
             };
-            void Update() => dialog.IsPrimaryButtonEnabled = operations.CanSubmit;
+            void Update()
+            {
+                dialog.IsPrimaryButtonEnabled = operations.CanSubmit && session == client.Session && date == Today && client.State?.Tasks.Any(t => t.Id == taskId) == true;
+                dialog.Content = operations.IsConnected && session == client.Session && date == Today
+                    ? $"Archive “{task.Title}”? Its completion history will be kept."
+                    : "Connection lost or session changed. Reconnect and reopen the task to archive it.";
+            }
             operations.Changed += Update;
             try
             {
                 Update();
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary && !closed)
-                    await RunAsync(ct => client.ArchiveTaskAsync(taskId, Today, ct), "Task archived.", editorSubmission: true);
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary && !closed && dialog.IsPrimaryButtonEnabled)
+                    await RunAsync(ct => client.ArchiveTaskAsync(taskId, date, ct), "Task archived.", editorSubmission: true);
             }
             finally { operations.Changed -= Update; }
         }
@@ -267,6 +312,7 @@ internal sealed class MainWindow : Window
         bool allowDuringEditor = false, bool editorSubmission = false)
     {
         if (busy || closed) return false;
+        CaptureWorkspaceFocus(); // Capture before the operation gate disables native controls.
         try
         {
             var completed = await operations.ExecuteAsync(async () =>
@@ -302,7 +348,9 @@ internal sealed class MainWindow : Window
         var enabled = !value && !operations.IsEditorOpen && !operations.IsRestarting;
         Find<ScrollViewer>("SignInPanel").IsEnabled = enabled;
         SetControlsEnabled(Find<Grid>("Workspace"), enabled);
-        SetControlsEnabled(Find<Grid>("ConnectionPanel"), enabled);
+        SetControlsEnabled(Find<Grid>("ConnectionPanel"), !value && !operations.IsRestarting);
+        SetControlsEnabled(Find<StackPanel>("TaskEditorPanel"), !value && !operations.IsRestarting);
+        taskEditor?.UpdateSubmission(operations);
         Find<ProgressBar>("BusyProgress").Visibility = Visible(value);
         RenderUpdates();
     }
@@ -312,17 +360,40 @@ internal sealed class MainWindow : Window
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
         {
             var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is Control control) control.IsEnabled = enabled;
+            if (child is Control control && control is not ScrollViewer) control.IsEnabled = enabled;
             else SetControlsEnabled(child, enabled);
         }
     }
 
     private void Render()
     {
+        CaptureWorkspaceFocus();
         RenderUpdates();
-        var connected = client.IsConnected && client.State is not null && !operations.IsSigningOut;
+        var connected = client.IsConnected && client.State is not null && !operations.IsSigningOut
+            && client.State.Date == Today.ToString("yyyy-MM-dd");
         operations.SetConnected(connected);
         completedDisclosure.Update(operations.IsSigningOut ? null : client.Session, Today);
+        workspace.Update(operations.IsSigningOut ? null : client.Session, Today, client.State);
+        if (workspace.Mode != "details" || detailFocusTaskId != workspace.TaskId)
+        {
+            detailFocusTaskId = null;
+            detailFocusAction = null;
+        }
+        if (!ReferenceEquals(editorFocusDraft, workspace.Draft))
+        {
+            editorFocusDraft = workspace.Draft;
+            editorFocusField = null;
+        }
+        if (workspaceEditorOpen && workspace.Draft is null)
+        {
+            workspaceEditorOpen = false;
+            operations.CloseEditor();
+        }
+        if (!connected || workspace.Draft is null)
+        {
+            Find<StackPanel>("TaskEditorPanel").Children.Clear();
+            taskEditor = null;
+        }
         Find<Grid>("StartupPanel").Visibility = Visible(startup.IsRestoring);
         Find<ScrollViewer>("SignInPanel").Visibility = Visible(!startup.IsRestoring && !startup.NeedsRetry && client.Session is null && !client.NeedsSignOutRetry);
         Find<Grid>("ConnectionPanel").Visibility = Visible(!startup.IsRestoring && (startup.NeedsRetry || client.NeedsSignOutRetry || client.Session is not null && !connected));
@@ -333,11 +404,12 @@ internal sealed class MainWindow : Window
         Find<StackPanel>("QueueList").Children.Clear();
         Find<StackPanel>("CompletedList").Children.Clear();
         Find<StackPanel>("ListPanel").Children.Clear();
+        Find<StackPanel>("TaskDetailsPanel").Children.Clear();
         Find<TextBlock>("CurrentTitle").Text = string.Empty;
         Find<Button>("CurrentTitleActions").Flyout = null;
         Find<Button>("CurrentTitleActions").IsEnabled = false;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Find<Button>("CurrentTitleActions"), string.Empty);
-        Find<TextBlock>("CurrentNotes").Text = string.Empty;
+
         Find<TextBlock>("CurrentMetadata").Text = string.Empty;
         Find<TextBlock>("ProgressText").Text = string.Empty;
         Find<TextBlock>("QueueCount").Text = string.Empty;
@@ -345,7 +417,7 @@ internal sealed class MainWindow : Window
         Find<ProgressBar>("DailyProgress").Value = 0;
         Find<Button>("CompletedToggle").Content = string.Empty;
         Find<StackPanel>("CompletedList").Visibility = Visible(completedDisclosure.IsExpanded);
-        if (!connected) return;
+        if (!connected) { Find<TextBlock>("PageTitle").Text = string.Empty; Find<TextBlock>("PageSubtitle").Text = string.Empty; SetBusy(busy); return; }
         var state = client.State!;
         Find<TextBlock>("PageTitle").Text = page switch { "upcoming" => "Upcoming", "routines" => "Routines", "settings" => "Settings", _ => "Today" };
         Find<TextBlock>("PageSubtitle").Text = page switch
@@ -355,10 +427,24 @@ internal sealed class MainWindow : Window
             "settings" => "Your connection, account and app updates",
             _ => Today.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d")
         };
-        Find<StackPanel>("TodayPanel").Visibility = Visible(page == "today");
-        Find<StackPanel>("ListPanel").Visibility = Visible(page is "upcoming" or "routines");
-        Find<StackPanel>("SettingsPanel").Visibility = Visible(page == "settings");
-        Find<Button>("AddTask").Visibility = Visible(page != "settings");
+        var listing = workspace.Mode == "list";
+        Find<StackPanel>("TodayPanel").Visibility = Visible(listing && page == "today");
+        Find<StackPanel>("ListPanel").Visibility = Visible(listing && page is "upcoming" or "routines");
+        Find<StackPanel>("SettingsPanel").Visibility = Visible(listing && page == "settings");
+        Find<StackPanel>("TaskDetailsPanel").Visibility = Visible(workspace.Mode == "details");
+        Find<StackPanel>("TaskEditorPanel").Visibility = Visible(workspace.Mode == "edit");
+        Find<Button>("AddTask").Visibility = Visible(listing && page != "settings");
+        if (workspace.Mode == "details") RenderDetails();
+        if (workspace.Mode == "edit" && workspace.Draft is { } draft)
+        {
+            Find<TextBlock>("PageTitle").Text = workspace.TaskId is null ? "Add task" : "Edit task";
+            Find<TextBlock>("PageSubtitle").Text = "A task name and a schedule. Previous completions stay on your server.";
+            if (taskEditor is null)
+            {
+                taskEditor = new TaskEditor(draft, operations, SaveWorkspaceAsync, CancelWorkspaceEdit, isNew: workspace.TaskId is null);
+                Find<StackPanel>("TaskEditorPanel").Children.Add(taskEditor.Panel);
+            }
+        }
         foreach (var (name, route, label) in new[] { ("TodayNav", "today", "Today"), ("UpcomingNav", "upcoming", "Upcoming"), ("RoutinesNav", "routines", "Routines"), ("SettingsNav", "settings", "Settings") })
         {
             var nav = Find<Button>(name);
@@ -373,11 +459,12 @@ internal sealed class MainWindow : Window
         Find<TextBlock>("CurrentTitle").Text = current?.Title ?? (state.Tasks.Count == 0 ? "No tasks yet" : "All done for today");
         if (current is not null)
         {
-            AttachOccurrenceActions(Find<Button>("CurrentTitleActions"), current);
+            Find<Button>("CurrentTitleActions").Tag = FocusKey(current.TaskId, current.OccurrenceId);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Find<Button>("CurrentTitleActions"), "View task: " + current.Title);
             Find<Button>("CurrentTitleActions").IsEnabled = CanAct;
         }
         Find<TextBlock>("CurrentMetadata").Text = current is null ? string.Empty : Metadata(current);
-        Find<TextBlock>("CurrentNotes").Text = current?.Notes ?? (state.Tasks.Count == 0 ? "Add your first task to get started." : "Nothing else is due today.");
+
         Find<Button>("MarkDone").Visibility = Visible(current is not null);
         Find<Button>("CurrentOptions").Visibility = Visible(current is not null);
         Find<TextBlock>("QueueCount").Text = $"{client.Waiting.Count} {(client.Waiting.Count == 1 ? "task" : "tasks")}";
@@ -400,7 +487,7 @@ internal sealed class MainWindow : Window
         if (page == "upcoming")
         {
             foreach (var occurrence in state.Upcoming)
-                Find<StackPanel>("ListPanel").Children.Add(WithOptions(OccurrenceRow(occurrence, $"{occurrence.DueDate}  ·  {occurrence.Category}  ·  {Schedule(occurrence.Repeat, occurrence.Interval)}"), occurrence.TaskId, occurrence.Title));
+                Find<StackPanel>("ListPanel").Children.Add(WithOptions(OccurrenceRow(occurrence, $"{occurrence.DueDate}  ·  {Schedule(occurrence.Repeat, occurrence.Interval)}"), occurrence.TaskId, occurrence.Title));
             if (state.Upcoming.Count == 0) Find<StackPanel>("ListPanel").Children.Add(Secondary("No upcoming tasks."));
         }
         if (page == "routines")
@@ -408,23 +495,34 @@ internal sealed class MainWindow : Window
             foreach (var task in state.Tasks)
             {
                 var occurrence = state.Today.FirstOrDefault(o => o.TaskId == task.Id) ?? state.Upcoming.FirstOrDefault(o => o.TaskId == task.Id);
-                var metadata = $"{task.Category}  ·  {Schedule(task.Repeat, task.Interval)}  ·  Starts {task.StartDate}";
-                var row = occurrence is null ? Row(task.Title, metadata, "Actions") : OccurrenceRow(occurrence, metadata);
-                if (occurrence is null)
-                {
-                    var unavailable = new MenuFlyout();
-                    unavailable.Items.Add(new MenuFlyoutItem { Text = "No occurrence due today", IsEnabled = false });
-                    row.Flyout = unavailable;
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, "Task actions: " + task.Title);
-                }
+                var metadata = $"{Schedule(task.Repeat, task.Interval)}  ·  First due {task.StartDate}";
+                var row = Row(task.Title, metadata, "View task →");
+                row.Tag = FocusKey(task.Id, occurrence?.OccurrenceId);
+                row.Click += (_, _) => OpenDetails(task.Id, occurrence?.OccurrenceId);
                 Find<StackPanel>("ListPanel").Children.Add(WithOptions(row, task.Id, task.Title));
             }
             if (state.Tasks.Count == 0) Find<StackPanel>("ListPanel").Children.Add(Secondary("No tasks yet. Add your first task to get started."));
         }
         Find<TextBlock>("ConnectionDetails").Text = client.Session!.Endpoint + "\n" + client.Session.Username;
+        SetBusy(busy);
+        if (!busy && restoreWorkspaceFocus)
+        {
+            restoreWorkspaceFocus = false;
+            if (workspace.Mode == "edit") taskEditor?.FocusField(editorFocusField);
+            else if (workspace.Mode == "details" && detailFocusAction is not null)
+            {
+                var taskId = workspace.TaskId;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (closed || busy || !client.IsConnected || workspace.Mode != "details" || workspace.TaskId != taskId) return;
+                    (FindButton(Find<StackPanel>("TaskDetailsPanel"), detailFocusAction)
+                        ?? Find<StackPanel>("TaskDetailsPanel").Children.OfType<Button>().FirstOrDefault())?.Focus(FocusState.Programmatic);
+                });
+            }
+        }
     }
 
-    private static string Metadata(Occurrence occurrence) => $"{occurrence.Category}  ·  {Schedule(occurrence.Repeat, occurrence.Interval)}  ·  {(occurrence.Overdue ? "Overdue · " + occurrence.DueDate : "Due today")}";
+    private static string Metadata(Occurrence occurrence) => $"{Schedule(occurrence.Repeat, occurrence.Interval)}  ·  {(occurrence.Overdue ? "Overdue · " + occurrence.DueDate : "Due today")}";
     private static string Schedule(string repeat, int interval) => repeat switch
     {
         "daily" => interval == 1 ? "Daily" : $"Every {interval} days",
@@ -444,42 +542,129 @@ internal sealed class MainWindow : Window
 
     private Button OccurrenceRow(Occurrence occurrence, string metadata)
     {
-        var button = Row(occurrence.Title, metadata, "Actions");
-        AttachOccurrenceActions(button, occurrence);
+        var button = Row(occurrence.Title, metadata, "View task →");
+        button.Tag = FocusKey(occurrence.TaskId, occurrence.OccurrenceId);
+        button.Click += (_, _) => OpenDetails(occurrence.TaskId, occurrence.OccurrenceId);
         return button;
     }
 
-    private void AttachOccurrenceActions(Button button, Occurrence occurrence)
+    private void OpenDetails(string taskId, string? occurrenceId)
     {
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Task actions: " + occurrence.Title);
-        var menu = new MenuFlyout();
-        var focus = new MenuFlyoutItem { Text = "Make current" };
-        var complete = new MenuFlyoutItem { Text = "Mark done" };
-        var undo = new MenuFlyoutItem { Text = "Undo" };
-        focus.Click += (_, _) =>
+        if (!CanAct || client.State?.Tasks.All(t => t.Id != taskId) != false) return;
+        returnFocus = FocusKey(taskId, occurrenceId);
+        workspace.OpenTask(taskId, page, occurrenceId);
+        Render();
+        FocusFirst(Find<StackPanel>("TaskDetailsPanel"));
+    }
+
+    private void BackToList()
+    {
+        if (busy) return;
+        page = workspace.Back();
+        Render();
+        DispatcherQueue.TryEnqueue(() =>
         {
-            if (!CanAct || !TaskActions.CanFocus(client.State, occurrence, Today)) return;
-            client.Select(occurrence.OccurrenceId); page = "today"; Render();
-        };
-        complete.Click += async (_, _) =>
+            var target = FindButton(Find<StackPanel>("MainContent"), returnFocus);
+            (target ?? Find<Button>(page switch { "upcoming" => "UpcomingNav", "routines" => "RoutinesNav", _ => "TodayNav" })).Focus(FocusState.Programmatic);
+        });
+    }
+
+    private void CaptureWorkspaceFocus()
+    {
+        if (root.XamlRoot is null) return;
+        if (workspace.Mode == "details" && FocusManager.GetFocusedElement(root.XamlRoot) is Button { Tag: string key }
+            && key.StartsWith("details:", StringComparison.Ordinal))
         {
-            if (CanAct && TaskActions.CanComplete(client.State, occurrence, Today))
-                await RunAsync(ct => client.CompleteAsync(occurrence, Today, ct), "Task completed.");
-        };
-        undo.Click += async (_, _) =>
+            detailFocusTaskId = workspace.TaskId;
+            detailFocusAction = key;
+            restoreWorkspaceFocus = true;
+        }
+        if (workspace.Mode == "edit" && taskEditor?.FocusedField is { } field)
         {
-            if (CanAct && TaskActions.CanUndo(client.State, occurrence, Today))
-                await RunAsync(ct => client.UndoAsync(occurrence, Today, ct), "Completion undone.");
-        };
-        menu.Opening += (_, _) =>
+            editorFocusDraft = workspace.Draft;
+            editorFocusField = field;
+            restoreWorkspaceFocus = true;
+        }
+    }
+
+    private static string FocusKey(string taskId, string? occurrenceId) => "task:" + taskId + ":" + occurrenceId;
+    private static Button? FindButton(DependencyObject parent, string? key)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
         {
-            menu.Items.Clear();
-            if (TaskActions.CanFocus(client.State, occurrence, Today)) { menu.Items.Add(focus); menu.Items.Add(complete); }
-            else if (TaskActions.CanUndo(client.State, occurrence, Today)) menu.Items.Add(undo);
-            else menu.Items.Add(new MenuFlyoutItem { Text = "Not due today", IsEnabled = false });
-            focus.IsEnabled = complete.IsEnabled = undo.IsEnabled = CanAct;
-        };
-        button.Flyout = menu;
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Button button && key is not null && button.Tag as string == key && button.Visibility == Visibility.Visible) return button;
+            if (child is UIElement element && element.Visibility == Visibility.Collapsed) continue;
+            if (FindButton(child, key) is { } found) return found;
+        }
+        return null;
+    }
+
+    private void FocusFirst(StackPanel panel) => DispatcherQueue.TryEnqueue(() => panel.Children.OfType<Control>().FirstOrDefault()?.Focus(FocusState.Programmatic));
+
+    private void RenderDetails()
+    {
+        Find<TextBlock>("PageTitle").Text = "Task details";
+        Find<TextBlock>("PageSubtitle").Text = "A name, a schedule and your available history";
+        var panel = Find<StackPanel>("TaskDetailsPanel");
+        var back = new Button { Content = "← Back to " + workspace.Origin, Tag = "details:back" };
+        back.Click += (_, _) => BackToList();
+        panel.Children.Add(back);
+        var task = workspace.ResolveTask(client.State);
+        if (task is null) { panel.Children.Add(Secondary("This task is no longer available. Return to the list.")); return; }
+        panel.Children.Add(new TextBlock { Text = task.Title, FontFamily = new FontFamily("Georgia"), FontSize = 32, TextWrapping = TextWrapping.Wrap });
+        var edit = new Button { Content = "✎ Edit task", Tag = "details:edit" };
+        edit.Click += async (_, _) => await EditAsync(task.Id);
+        panel.Children.Add(edit);
+        panel.Children.Add(Secondary(Schedule(task.Repeat, task.Interval)));
+        panel.Children.Add(Secondary("First due date: " + task.StartDate));
+        var occurrence = workspace.ResolveOccurrence(client.State);
+        if (occurrence is not null)
+        {
+            panel.Children.Add(Secondary((occurrence.Completed ? "Completed occurrence due: " : "Occurrence due: ") + occurrence.DueDate));
+            AddDetailActions(panel, occurrence);
+        }
+        panel.Children.Add(new TextBlock { Text = "Available history", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        if (!string.IsNullOrWhiteSpace(task.CreatedAt)) panel.Children.Add(Secondary("Created: " + task.CreatedAt));
+        if (occurrence is { Completed: true } && !string.IsNullOrWhiteSpace(occurrence.CompletedAt))
+            panel.Children.Add(Secondary("Completed: " + occurrence.CompletedAt));
+        panel.Children.Add(Secondary("Full completion history is not available in this app. Previous completions remain on your server."));
+        var archive = new Button { Content = "Archive task", Tag = "details:archive" };
+        archive.Click += async (_, _) => await ArchiveAsync(task.Id);
+        panel.Children.Add(archive);
+    }
+
+    private void AddDetailActions(StackPanel panel, Occurrence occurrence)
+    {
+        if (TaskActions.CanFocus(client.State, occurrence, Today))
+        {
+            var focus = new Button { Content = "Make current", Tag = "details:focus" };
+            focus.Click += (_, _) =>
+            {
+                if (!CanAct || !TaskActions.CanFocus(client.State, occurrence, Today)) return;
+                client.Select(occurrence.OccurrenceId); workspace.Back(); page = "today"; Render();
+            };
+            panel.Children.Add(focus);
+            var complete = new Button { Content = "Mark done", HorizontalAlignment = HorizontalAlignment.Right, Tag = "details:complete" };
+            complete.Click += async (_, _) =>
+            {
+                var date = Today;
+                if (CanAct && TaskActions.CanComplete(client.State, occurrence, date))
+                    await RunAsync(ct => client.CompleteAsync(occurrence, date, ct), "Task completed.");
+            };
+            panel.Children.Add(complete);
+        }
+        else if (TaskActions.CanUndo(client.State, occurrence, Today))
+        {
+            var undo = new Button { Content = "Undo", Tag = "details:undo" };
+            undo.Click += async (_, _) =>
+            {
+                var date = Today;
+                if (CanAct && TaskActions.CanUndo(client.State, occurrence, date))
+                    await RunAsync(ct => client.UndoAsync(occurrence, date, ct), "Completion undone.");
+            };
+            panel.Children.Add(undo);
+        }
     }
 
     private Grid WithOptions(Button row, string taskId, string title)
@@ -512,91 +697,5 @@ internal sealed class MainWindow : Window
             Background = new SolidColorBrush(Colors.Transparent), BorderBrush = Brush(59, 75, 80),
             BorderThickness = new Thickness(0, 0, 0, 1), CornerRadius = new CornerRadius(0)
         };
-    }
-}
-
-internal static class TaskEditor
-{
-    public static async Task<bool> ShowAsync(XamlRoot xamlRoot, EditorOperationGate operations, Func<TaskDraft, Task> save, TaskDraft? initial = null)
-    {
-        var title = new TextBox { Header = "Task title", MaxLength = 200 };
-        var repeat = new ComboBox { Header = "Repeat", HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var label in new[] { "Does not repeat", "Daily", "Weekly", "Monthly", "Yearly" }) repeat.Items.Add(label);
-        repeat.SelectedIndex = 0;
-        var interval = new NumberBox { Header = "Every N intervals", Minimum = 1, Maximum = 365, Value = 1, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
-        var date = new CalendarDatePicker { Header = "First due date", Date = DateTimeOffset.Now, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var category = new TextBox { Header = "Category", Text = "Personal", MaxLength = 60 };
-        var priority = new ComboBox { Header = "Priority", HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var label in new[] { "Normal", "Medium", "High" }) priority.Items.Add(label);
-        priority.SelectedIndex = 0;
-        var notes = new TextBox { Header = "Notes (optional)", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxLength = 2000, MinHeight = 80 };
-        if (initial is not null)
-        {
-            title.Text = initial.Title; notes.Text = initial.Notes; category.Text = initial.Category;
-            repeat.SelectedIndex = Array.IndexOf(new[] { "once", "daily", "weekly", "monthly", "yearly" }, initial.Repeat);
-            interval.Value = initial.Interval; priority.SelectedIndex = initial.Priority;
-            date.Date = new DateTimeOffset(DateOnly.ParseExact(initial.StartDate, "yyyy-MM-dd").ToDateTime(TimeOnly.MinValue));
-        }
-        var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromArgb(255, 242, 181, 173)), TextWrapping = TextWrapping.Wrap };
-        var panel = new StackPanel { Spacing = 14, MinWidth = 310 };
-        foreach (var control in new UIElement[] { title, repeat, interval, date, category, priority, notes, error }) panel.Children.Add(control);
-        var dialog = new ContentDialog
-        {
-            XamlRoot = xamlRoot, RequestedTheme = ElementTheme.Dark, Title = initial is null ? "Add task" : "Edit task",
-            Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 560 },
-            PrimaryButtonText = initial is null ? "Add task" : "Save changes", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary
-        };
-        var added = false;
-        var saving = false;
-        void UpdateSubmission()
-        {
-            dialog.IsPrimaryButtonEnabled = !saving && operations.CanSubmit;
-            if (!operations.IsConnected)
-                error.Text = "Connection lost or session expired. Your draft is kept here. Cancel to reconnect or sign in.";
-        }
-        dialog.CloseButtonClick += (_, args) => args.Cancel = saving;
-        dialog.Closing += (_, args) => args.Cancel = saving;
-        dialog.PrimaryButtonClick += async (_, args) =>
-        {
-            args.Cancel = true;
-            if (saving || !operations.CanSubmit) return;
-            if (string.IsNullOrWhiteSpace(title.Text) || date.Date is null || !double.IsFinite(interval.Value) || interval.Value < 1 || interval.Value > 365 || interval.Value != Math.Truncate(interval.Value))
-            {
-                error.Text = "Enter a title, a first due date, and a whole interval from 1 to 365.";
-                return;
-            }
-            var deferral = args.GetDeferral();
-            saving = true;
-            dialog.IsPrimaryButtonEnabled = false;
-            foreach (var control in panel.Children.OfType<Control>()) control.IsEnabled = false;
-            error.Text = string.Empty;
-            try
-            {
-                var draft = new TaskDraft(title.Text.Trim(), notes.Text, category.Text.Trim(),
-                    new[] { "once", "daily", "weekly", "monthly", "yearly" }[repeat.SelectedIndex],
-                    (int)interval.Value, DateOnly.FromDateTime(date.Date.Value.DateTime).ToString("yyyy-MM-dd"), priority.SelectedIndex);
-                await save(draft);
-                added = true;
-                args.Cancel = false;
-            }
-            catch (TasksClientException failure) { error.Text = failure.Message; }
-            catch (OperationCanceledException) { error.Text = "The write was not confirmed. Reconnect to verify before trying again."; }
-            catch (Exception) { error.Text = "The write was not confirmed. Reconnect to verify before trying again."; }
-            finally
-            {
-                saving = false;
-                foreach (var control in panel.Children.OfType<Control>()) control.IsEnabled = true;
-                UpdateSubmission();
-                deferral.Complete();
-            }
-        };
-        operations.Changed += UpdateSubmission;
-        try
-        {
-            UpdateSubmission();
-            await dialog.ShowAsync();
-        }
-        finally { operations.Changed -= UpdateSubmission; }
-        return added;
     }
 }
