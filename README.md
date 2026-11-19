@@ -7,8 +7,8 @@ Each platform keeps its newest verified manifest-backed publication; versions ma
 
 | Platform | Version | Download | Status |
 | --- | --- | --- | --- |
-| Windows x64 | 0.1.25 | [Installer (.exe)](https://github.com/everyonesoftware/tasks/releases/download/v25/TasksWindows-win-x64-Setup.exe) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v25/TasksWindows-win-x64-Setup.exe.sha256) | Unsigned; Windows may show an unknown-publisher/SmartScreen warning. |
-| Android | 24 | [APK](https://github.com/everyonesoftware/tasks/releases/download/v24/Tasks-24.apk) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v24/SHA256SUMS) | Signed with the Tasks release key. |
+| Windows x64 | 0.1.27 | [Installer (.exe)](https://github.com/everyonesoftware/tasks/releases/download/v27/TasksWindows-win-x64-Setup.exe) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v27/TasksWindows-win-x64-Setup.exe.sha256) | Unsigned; Windows may show an unknown-publisher/SmartScreen warning. |
+| Android | 27 | [APK](https://github.com/everyonesoftware/tasks/releases/download/v27/Tasks-27.apk) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v27/SHA256SUMS) | Signed with the Tasks release key. |
 | Web / server | — | [Deployment documentation](https://github.com/everyonesoftware/tasks/blob/main/docs/docker-deployment.md) | Self-hosted together; no standalone web installer. |
 
 Verify SHA-256 checksums before installation. Unchanged platforms retain their original release, version and source identity. This table is not an in-app update feed.
