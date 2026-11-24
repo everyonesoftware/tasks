@@ -7,7 +7,7 @@ Each platform keeps its newest verified manifest-backed publication; versions ma
 
 | Platform | Version | Download | Status |
 | --- | --- | --- | --- |
-| Windows x64 | 0.1.31 | [Installer (.exe)](https://github.com/everyonesoftware/tasks/releases/download/v31/TasksWindows-win-x64-Setup.exe) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v31/TasksWindows-win-x64-Setup.exe.sha256) | Unsigned; Windows may show an unknown-publisher/SmartScreen warning. |
+| Windows x64 | 0.1.33 | [Installer (.exe)](https://github.com/everyonesoftware/tasks/releases/download/v33/TasksWindows-win-x64-Setup.exe) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v33/TasksWindows-win-x64-Setup.exe.sha256) | Unsigned; Windows may show an unknown-publisher/SmartScreen warning. |
 | Android | 29 | [APK](https://github.com/everyonesoftware/tasks/releases/download/v29/Tasks-29.apk) · [SHA-256](https://github.com/everyonesoftware/tasks/releases/download/v29/SHA256SUMS) | Signed with the Tasks release key. |
 | Web / server | — | [Deployment documentation](https://github.com/everyonesoftware/tasks/blob/main/docs/docker-deployment.md) | Self-hosted together; no standalone web installer. |
 
