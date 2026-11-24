@@ -215,8 +215,10 @@ internal sealed class MainWindow : Window
             && ReferenceEquals(state, client.State) && button.IsLoaded && button.ContextFlyout == menu;
         bool CanSetCurrent() => occurrence is not null && client.Current?.OccurrenceId != occurrence.OccurrenceId
             && TaskActions.CanFocus(client.State, occurrence, Today);
+        bool CanMarkDone() => occurrence is not null
+            && TaskActions.CanComplete(client.State, occurrence, date);
 
-        var setCurrent = new MenuFlyoutItem { Text = "Set current", IsEnabled = CanSetCurrent() };
+        var setCurrent = new MenuFlyoutItem { Text = "Set Current", IsEnabled = CanSetCurrent() };
         setCurrent.Click += (_, _) =>
         {
             if (!IsMenuTargetLive() || !CanSetCurrent()) return;
@@ -229,16 +231,23 @@ internal sealed class MainWindow : Window
                     Find<Button>("CurrentTitleActions").Focus(FocusState.Programmatic);
             });
         };
+        var markDone = new MenuFlyoutItem { Text = "Mark Done", IsEnabled = CanMarkDone() };
+        markDone.Click += async (_, _) =>
+        {
+            if (!IsMenuTargetLive() || !CanMarkDone()) return;
+            await RunAsync(ct => client.CompleteAsync(occurrence!, date, ct), "Task completed.");
+        };
         var delete = new MenuFlyoutItem { Text = "Delete" };
         delete.Click += async (_, _) => { if (IsMenuTargetLive()) await ArchiveAsync(taskId); };
         var view = new MenuFlyoutItem { Text = "View" };
         view.Click += (_, _) => { if (IsMenuTargetLive()) OpenDetails(taskId, occurrence?.OccurrenceId); };
         var edit = new MenuFlyoutItem { Text = "Edit" };
         edit.Click += async (_, _) => { if (IsMenuTargetLive()) await EditAsync(taskId, occurrence?.OccurrenceId); };
+        menu.Items.Add(markDone);
         menu.Items.Add(setCurrent);
-        menu.Items.Add(delete);
         menu.Items.Add(view);
         menu.Items.Add(edit);
+        menu.Items.Add(delete);
         button.ContextFlyout = menu;
     }
 

@@ -44,7 +44,6 @@ test('main current completion checks live client eligibility and uses one invoca
 });
 test('context commands target the clicked task and only eligible Today occurrences can become current', () => {
   const menu = code.slice(code.indexOf('private void AttachTaskMenu'), code.indexOf('private Task EditAsync'));
-  assert.match(menu, /Text = "Set current"/);
   assert.match(menu, /TaskActions.CanFocus\(client.State, occurrence, Today\)/);
   assert.match(menu, /if \(!IsMenuTargetLive\(\) \|\| !CanSetCurrent\(\)\) return/);
   assert.match(menu, /client.Select\(occurrence!\.OccurrenceId\)/);
@@ -56,11 +55,29 @@ test('context commands target the clicked task and only eligible Today occurrenc
   assert.match(menu, /if \(IsMenuTargetLive\(\)\) await ArchiveAsync\(taskId\)/);
   assert.match(menu, /ReferenceEquals\(state, client.State\)/);
 });
-test('Delete requires confirmation and preserves history; Edit uses the guarded draft editor', () => {
-  assert.match(code, /PrimaryButtonText = "Delete"/);
-  assert.match(code, /Its completion history will be kept/);
-  assert.match(code, /await RunAsync\(ct => client.ArchiveTaskAsync\(taskId, date, ct\)/);
-  assert.match(code, /DefaultButton = ContentDialogButton.Close/);
+test('Mark Done only completes the eligible occurrence that opened a live context menu', () => {
+  const menu = code.slice(code.indexOf('private void AttachTaskMenu'), code.indexOf('private Task EditAsync'));
+  assert.match(menu, /Text = "Mark Done", IsEnabled = CanMarkDone\(\)/);
+  assert.match(menu, /bool CanMarkDone\(\) => occurrence is not null\s*&& TaskActions.CanComplete\(client.State, occurrence, date\)/);
+  assert.match(menu, /Today == date/);
+  assert.match(menu, /if \(!IsMenuTargetLive\(\) \|\| !CanMarkDone\(\)\) return;\s*await RunAsync\(ct => client.CompleteAsync\(occurrence!, date, ct\), "Task completed\."\)/);
+  assert.match(menu, /menu.Items.Add\(markDone\)/);
+});
+test('the task context menu displays actions in order, with Delete last', () => {
+  const menu = code.slice(code.indexOf('private void AttachTaskMenu'), code.indexOf('private Task EditAsync'));
+  const labels = new Map(Array.from(menu.matchAll(/var (\w+) = new MenuFlyoutItem \{ Text = "([^"]+)"/g), ([, item, label]) => [item, label]));
+  const order = Array.from(menu.matchAll(/menu\.Items\.Add\((\w+)\);/g), ([, item]) => labels.get(item));
+  assert.deepEqual(order, ['Mark Done', 'Set Current', 'View', 'Edit', 'Delete']);
+});
+test('Delete from the menu or details archives only after explicit dialog approval', () => {
+  const archive = code.slice(code.indexOf('private async Task ArchiveAsync'), code.indexOf('private async Task<bool> RunAsync'));
+  assert.match(code, /archive\.Click \+= async \(_, _\) => await ArchiveAsync\(task\.Id\)/);
+  assert.match(archive, /PrimaryButtonText = "Delete", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton\.Close/);
+  assert.match(archive, /Its completion history will be kept/);
+  assert.match(archive, /if \(await dialog\.ShowAsync\(\) == ContentDialogResult\.Primary && !closed && dialog\.IsPrimaryButtonEnabled\)\s+await RunAsync\(ct => client\.ArchiveTaskAsync\(taskId, date, ct\), "Task deleted\.", editorSubmission: true\);/);
+  assert.equal(Array.from(code.matchAll(/client\.ArchiveTaskAsync\(/g)).length, 1);
+});
+test('Edit uses the guarded draft editor', () => {
   const workspace = readFileSync(new URL('../../apps/windows/Tasks.Core/TaskWorkspace.cs', import.meta.url), 'utf8');
   assert.match(code, /workspace.SaveAsync\(client, payload, date/);
   assert.match(workspace, /client\.EditWorkspaceTaskAsync\(/);
