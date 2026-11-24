@@ -134,17 +134,14 @@ internal sealed class MainWindow : Window
             if (CanAct && occurrence is not null && TaskActions.CanComplete(client.State, occurrence, date))
                 await RunAsync(ct => client.CompleteAsync(occurrence, date, ct), "Task completed.");
         };
-        // A flyout has its own namescope; resolve its item through the owner.
-        var flyout = (MenuFlyout)Find<Button>("CurrentOptions").Flyout;
-        ((MenuFlyoutItem)flyout.Items[0]).Click += (_, _) =>
+        Find<Button>("NotNow").Click += (_, _) =>
         {
-            if (!busy && !operations.IsEditorOpen && client.IsConnected) { client.NotNow(); Render(); }
+            if (CanAct && client.Current is { } current && TaskActions.CanFocus(client.State, current, Today))
+            {
+                client.NotNow();
+                Render();
+            }
         };
-        var editCurrent = new MenuFlyoutItem { Text = "Edit" };
-        editCurrent.Click += async (_, _) => { if (client.Current is { } current) await EditAsync(current.TaskId); };
-        var archiveCurrent = new MenuFlyoutItem { Text = "Archive" };
-        archiveCurrent.Click += async (_, _) => { if (client.Current is { } current) await ArchiveAsync(current.TaskId); };
-        flyout.Items.Add(editCurrent); flyout.Items.Add(archiveCurrent);
         Find<Button>("AddTask").Click += async (_, _) => await AddAsync();
         Find<Button>("Refresh").Click += async (_, _) => await RunAsync(ct => client.RefreshAsync(Today, ct), "Connection verified.");
         Find<Button>("RetryConnection").Click += async (_, _) => await RunAsync(
@@ -207,28 +204,52 @@ internal sealed class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private Button TaskOptions(string taskId, string title)
+    private void AttachTaskMenu(Button button, string taskId, Occurrence? occurrence)
     {
         var menu = new MenuFlyout();
+        var state = client.State;
+        var origin = page;
+        var date = Today;
+        // A flyout can outlive the rendering that created its target.
+        bool IsMenuTargetLive() => CanAct && workspace.Mode == "list" && page == origin && Today == date
+            && ReferenceEquals(state, client.State) && button.IsLoaded && button.ContextFlyout == menu;
+        bool CanSetCurrent() => occurrence is not null && client.Current?.OccurrenceId != occurrence.OccurrenceId
+            && TaskActions.CanFocus(client.State, occurrence, Today);
+
+        var setCurrent = new MenuFlyoutItem { Text = "Set current", IsEnabled = CanSetCurrent() };
+        setCurrent.Click += (_, _) =>
+        {
+            if (!IsMenuTargetLive() || !CanSetCurrent()) return;
+            client.Select(occurrence!.OccurrenceId);
+            page = "today";
+            Render();
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (CanAct && page == "today" && workspace.Mode == "list" && client.Current?.OccurrenceId == occurrence.OccurrenceId)
+                    Find<Button>("CurrentTitleActions").Focus(FocusState.Programmatic);
+            });
+        };
+        var delete = new MenuFlyoutItem { Text = "Delete" };
+        delete.Click += async (_, _) => { if (IsMenuTargetLive()) await ArchiveAsync(taskId); };
+        var view = new MenuFlyoutItem { Text = "View" };
+        view.Click += (_, _) => { if (IsMenuTargetLive()) OpenDetails(taskId, occurrence?.OccurrenceId); };
         var edit = new MenuFlyoutItem { Text = "Edit" };
-        var archive = new MenuFlyoutItem { Text = "Archive" };
-        edit.Click += async (_, _) => await EditAsync(taskId);
-        archive.Click += async (_, _) => await ArchiveAsync(taskId);
-        menu.Items.Add(edit); menu.Items.Add(archive);
-        var button = new Button { Content = "⋯", FontSize = 22, Flyout = menu, VerticalAlignment = VerticalAlignment.Center };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Task options: " + title);
-        return button;
+        edit.Click += async (_, _) => { if (IsMenuTargetLive()) await EditAsync(taskId, occurrence?.OccurrenceId); };
+        menu.Items.Add(setCurrent);
+        menu.Items.Add(delete);
+        menu.Items.Add(view);
+        menu.Items.Add(edit);
+        button.ContextFlyout = menu;
     }
 
-    private Task EditAsync(string taskId)
+    private Task EditAsync(string taskId, string? occurrenceId = null)
     {
         var task = client.State?.Tasks.FirstOrDefault(t => t.Id == taskId);
         if (closed || task is null || !CanAct || !operations.TryOpenEditor()) return Task.CompletedTask;
         if (workspace.Mode != "details" || workspace.TaskId != taskId)
         {
-            var occurrence = client.State!.Today.Concat(client.State.Upcoming).FirstOrDefault(o => o.TaskId == taskId);
-            returnFocus = FocusKey(taskId, occurrence?.OccurrenceId);
-            workspace.OpenTask(taskId, page, occurrence?.OccurrenceId);
+            returnFocus = FocusKey(taskId, occurrenceId);
+            workspace.OpenTask(taskId, page, occurrenceId);
         }
         if (!workspace.BeginEdit(client.State)) { operations.CloseEditor(); return Task.CompletedTask; }
         workspaceEditorOpen = true;
@@ -284,27 +305,26 @@ internal sealed class MainWindow : Window
         {
             var dialog = new ContentDialog
             {
-                XamlRoot = root.XamlRoot, RequestedTheme = ElementTheme.Dark, Title = "Archive task?",
-                Content = $"Archive “{task.Title}”? Its completion history will be kept.",
-                PrimaryButtonText = "Archive", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
+                XamlRoot = root.XamlRoot, RequestedTheme = ElementTheme.Dark, Title = "Delete task?",
+                PrimaryButtonText = "Delete", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
             };
             void Update()
             {
                 dialog.IsPrimaryButtonEnabled = operations.CanSubmit && session == client.Session && date == Today && client.State?.Tasks.Any(t => t.Id == taskId) == true;
                 dialog.Content = operations.IsConnected && session == client.Session && date == Today
-                    ? $"Archive “{task.Title}”? Its completion history will be kept."
-                    : "Connection lost or session changed. Reconnect and reopen the task to archive it.";
+                    ? $"Delete “{task.Title}” from your task lists? Its completion history will be kept."
+                    : "Connection lost or session changed. Reconnect and reopen the task to delete it.";
             }
             operations.Changed += Update;
             try
             {
                 Update();
                 if (await dialog.ShowAsync() == ContentDialogResult.Primary && !closed && dialog.IsPrimaryButtonEnabled)
-                    await RunAsync(ct => client.ArchiveTaskAsync(taskId, date, ct), "Task archived.", editorSubmission: true);
+                    await RunAsync(ct => client.ArchiveTaskAsync(taskId, date, ct), "Task deleted.", editorSubmission: true);
             }
             finally { operations.Changed -= Update; }
         }
-        catch (Exception) { if (!closed) Find<TextBlock>("Notice").Text = "Could not archive the task."; }
+        catch (Exception) { if (!closed) Find<TextBlock>("Notice").Text = "Could not delete the task."; }
         finally { operations.CloseEditor(); if (!closed) Render(); }
     }
 
@@ -348,6 +368,7 @@ internal sealed class MainWindow : Window
         var enabled = !value && !operations.IsEditorOpen && !operations.IsRestarting;
         Find<ScrollViewer>("SignInPanel").IsEnabled = enabled;
         SetControlsEnabled(Find<Grid>("Workspace"), enabled);
+        Find<Button>("CurrentTitleActions").IsEnabled = enabled && client.Current is not null;
         SetControlsEnabled(Find<Grid>("ConnectionPanel"), !value && !operations.IsRestarting);
         SetControlsEnabled(Find<StackPanel>("TaskEditorPanel"), !value && !operations.IsRestarting);
         taskEditor?.UpdateSubmission(operations);
@@ -401,14 +422,16 @@ internal sealed class MainWindow : Window
         Find<Grid>("Workspace").Visibility = Visible(!startup.IsRestoring && connected);
         Find<TextBlock>("OfflineEndpoint").Text = client.Session is { } profile ? profile.Endpoint + "\n" + profile.Username : string.Empty;
         // Always clear detached native views too; hidden controls are not a task cache.
+        var currentButton = Find<Button>("CurrentTitleActions");
+        currentButton.ContextFlyout?.Hide();
+        currentButton.ContextFlyout = null;
         Find<StackPanel>("QueueList").Children.Clear();
         Find<StackPanel>("CompletedList").Children.Clear();
         Find<StackPanel>("ListPanel").Children.Clear();
         Find<StackPanel>("TaskDetailsPanel").Children.Clear();
         Find<TextBlock>("CurrentTitle").Text = string.Empty;
-        Find<Button>("CurrentTitleActions").Flyout = null;
-        Find<Button>("CurrentTitleActions").IsEnabled = false;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Find<Button>("CurrentTitleActions"), string.Empty);
+        currentButton.Tag = null;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentButton, string.Empty);
 
         Find<TextBlock>("CurrentMetadata").Text = string.Empty;
         Find<TextBlock>("ProgressText").Text = string.Empty;
@@ -459,19 +482,18 @@ internal sealed class MainWindow : Window
         Find<TextBlock>("CurrentTitle").Text = current?.Title ?? (state.Tasks.Count == 0 ? "No tasks yet" : "All done for today");
         if (current is not null)
         {
-            Find<Button>("CurrentTitleActions").Tag = FocusKey(current.TaskId, current.OccurrenceId);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Find<Button>("CurrentTitleActions"), "View task: " + current.Title);
-            Find<Button>("CurrentTitleActions").IsEnabled = CanAct;
+            currentButton.Tag = FocusKey(current.TaskId, current.OccurrenceId);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentButton, current.Title);
+            if (listing && page == "today") AttachTaskMenu(currentButton, current.TaskId, current);
         }
         Find<TextBlock>("CurrentMetadata").Text = current is null ? string.Empty : Metadata(current);
 
         Find<Button>("MarkDone").Visibility = Visible(current is not null);
-        Find<Button>("CurrentOptions").Visibility = Visible(current is not null);
+        Find<Button>("NotNow").Visibility = Visible(current is not null);
         Find<TextBlock>("QueueCount").Text = $"{client.Waiting.Count} {(client.Waiting.Count == 1 ? "task" : "tasks")}";
         foreach (var occurrence in client.Waiting)
         {
-            var button = OccurrenceRow(occurrence, Metadata(occurrence));
-            Find<StackPanel>("QueueList").Children.Add(WithOptions(button, occurrence.TaskId, occurrence.Title));
+            Find<StackPanel>("QueueList").Children.Add(OccurrenceRow(occurrence, Metadata(occurrence)));
         }
         if (client.Waiting.Count == 0) Find<StackPanel>("QueueList").Children.Add(Secondary("Nothing waiting."));
         var completed = state.Today.Where(item => item.Completed).ToArray();
@@ -481,13 +503,12 @@ internal sealed class MainWindow : Window
             $"Completed today ({completed.Length}), {(completedDisclosure.IsExpanded ? "expanded" : "collapsed")}");
         foreach (var occurrence in completed)
         {
-            var button = OccurrenceRow(occurrence, "Completed today");
-            Find<StackPanel>("CompletedList").Children.Add(WithOptions(button, occurrence.TaskId, occurrence.Title));
+            Find<StackPanel>("CompletedList").Children.Add(OccurrenceRow(occurrence, "Completed today"));
         }
         if (page == "upcoming")
         {
             foreach (var occurrence in state.Upcoming)
-                Find<StackPanel>("ListPanel").Children.Add(WithOptions(OccurrenceRow(occurrence, $"{occurrence.DueDate}  ·  {Schedule(occurrence.Repeat, occurrence.Interval)}"), occurrence.TaskId, occurrence.Title));
+                Find<StackPanel>("ListPanel").Children.Add(OccurrenceRow(occurrence, $"{occurrence.DueDate}  ·  {Schedule(occurrence.Repeat, occurrence.Interval)}"));
             if (state.Upcoming.Count == 0) Find<StackPanel>("ListPanel").Children.Add(Secondary("No upcoming tasks."));
         }
         if (page == "routines")
@@ -496,10 +517,11 @@ internal sealed class MainWindow : Window
             {
                 var occurrence = state.Today.FirstOrDefault(o => o.TaskId == task.Id) ?? state.Upcoming.FirstOrDefault(o => o.TaskId == task.Id);
                 var metadata = $"{Schedule(task.Repeat, task.Interval)}  ·  First due {task.StartDate}";
-                var row = Row(task.Title, metadata, "View task →");
+                var row = Row(task.Title, metadata);
                 row.Tag = FocusKey(task.Id, occurrence?.OccurrenceId);
                 row.Click += (_, _) => OpenDetails(task.Id, occurrence?.OccurrenceId);
-                Find<StackPanel>("ListPanel").Children.Add(WithOptions(row, task.Id, task.Title));
+                AttachTaskMenu(row, task.Id, occurrence);
+                Find<StackPanel>("ListPanel").Children.Add(row);
             }
             if (state.Tasks.Count == 0) Find<StackPanel>("ListPanel").Children.Add(Secondary("No tasks yet. Add your first task to get started."));
         }
@@ -542,9 +564,10 @@ internal sealed class MainWindow : Window
 
     private Button OccurrenceRow(Occurrence occurrence, string metadata)
     {
-        var button = Row(occurrence.Title, metadata, "View task →");
+        var button = Row(occurrence.Title, metadata);
         button.Tag = FocusKey(occurrence.TaskId, occurrence.OccurrenceId);
         button.Click += (_, _) => OpenDetails(occurrence.TaskId, occurrence.OccurrenceId);
+        AttachTaskMenu(button, occurrence.TaskId, occurrence);
         return button;
     }
 
@@ -629,7 +652,7 @@ internal sealed class MainWindow : Window
         if (occurrence is { Completed: true } && !string.IsNullOrWhiteSpace(occurrence.CompletedAt))
             panel.Children.Add(Secondary("Completed: " + occurrence.CompletedAt));
         panel.Children.Add(Secondary("Full completion history is not available in this app. Previous completions remain on your server."));
-        var archive = new Button { Content = "Archive task", Tag = "details:archive" };
+        var archive = new Button { Content = "Delete task", Tag = "details:archive" };
         archive.Click += async (_, _) => await ArchiveAsync(task.Id);
         panel.Children.Add(archive);
     }
@@ -667,32 +690,15 @@ internal sealed class MainWindow : Window
         }
     }
 
-    private Grid WithOptions(Button row, string taskId, string title)
+    private static Button Row(string title, string metadata)
     {
-        var grid = new Grid { ColumnSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var options = TaskOptions(taskId, title);
-        Grid.SetColumn(options, 1); grid.Children.Add(row); grid.Children.Add(options);
-        return grid;
-    }
-
-    private static Button Row(string title, string metadata, string action)
-    {
-        var grid = new Grid { ColumnSpacing = 16 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var stack = new StackPanel { Spacing = 4 };
         stack.Children.Add(new TextBlock { Text = title, FontSize = 15, TextWrapping = TextWrapping.Wrap });
         stack.Children.Add(Secondary(metadata));
-        grid.Children.Add(stack);
-        var affordance = Secondary(action);
-        affordance.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(affordance, 1);
-        grid.Children.Add(affordance);
+
         return new Button
         {
-            Content = grid, HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = stack, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(4, 13, 4, 13),
             Background = new SolidColorBrush(Colors.Transparent), BorderBrush = Brush(59, 75, 80),
             BorderThickness = new Thickness(0, 0, 0, 1), CornerRadius = new CornerRadius(0)

@@ -20,10 +20,10 @@ test('Familiar native shell starts without task data while restoring authenticat
   assert.doesNotMatch(xaml, /Read for 20 minutes|Water the plants|Desktop design study|data-variant|WebView/);
 });
 
-test('Familiar preserves Current task, an options flyout, bottom-right completion and daily progress', () => {
+test('Familiar preserves Current task, Not now, bottom-right completion and daily progress', () => {
   const xaml = read('Tasks.App/Shell.xaml');
   assert.match(xaml, /Text="Current task"/);
-  assert.match(xaml, /MenuFlyoutItem[^>]*Text="Not now"/);
+  assert.match(xaml, /<Button x:Name="NotNow"[^>]*Content="Not now"/);
   assert.match(xaml, /x:Name="MarkDone"[^>]*HorizontalAlignment="Right"/);
   assert.match(xaml, /Text="Waiting for you"/);
   assert.match(xaml, /<ProgressBar[^>]*x:Name="DailyProgress"/);

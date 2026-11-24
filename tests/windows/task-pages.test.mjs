@@ -9,7 +9,7 @@ test('all primary activation surfaces open dedicated workspace details, never a 
   assert.match(code, /Find<Button>\("CurrentTitleActions"\)\.Click[\s\S]*?OpenDetails\(current.TaskId, current.OccurrenceId\)/);
   const row = code.slice(code.indexOf('private Button OccurrenceRow('), code.indexOf('private void OpenDetails('));
   assert.match(row, /button.Click.*OpenDetails\(occurrence.TaskId, occurrence.OccurrenceId\)/);
-  assert.doesNotMatch(row, /Flyout|client.Select/);
+  assert.doesNotMatch(row, /\.Flyout\s*=|client.Select/);
   assert.match(code, /row.Click.*OpenDetails\(task.Id, occurrence\?\.OccurrenceId\)/);
   assert.match(code, /workspace.OpenTask\(taskId, page, occurrenceId\)/);
   assert.match(code, /page = workspace.Back\(\)/);
