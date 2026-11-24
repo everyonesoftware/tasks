@@ -14,6 +14,16 @@
       <Setter Property="FontSize" Value="14" />
       <Setter Property="Foreground" Value="{StaticResource Muted}" />
     </Style>
+    <Style x:Key="TaskOptionsButton" TargetType="Button">
+      <Setter Property="Content" Value="⋯" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="MinWidth" Value="36" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style x:Key="Heading" TargetType="TextBlock">
       <Setter Property="FontFamily" Value="Georgia" />
       <Setter Property="FontSize" Value="36" />
@@ -79,12 +89,16 @@
           <Border x:Name="CurrentCard" Background="#30453E" BorderBrush="#4B6656" BorderThickness="1" CornerRadius="8" Padding="26,22,26,24" MinHeight="283">
             <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
               <TextBlock Text="Current task" CharacterSpacing="100" FontSize="12" FontWeight="SemiBold" Foreground="#C1D8C6" Margin="0,0,0,18" />
-              <Button x:Name="CurrentTitleActions" Grid.Row="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent" BorderThickness="0" IsTabStop="True">
-                <StackPanel Spacing="13">
-                  <TextBlock x:Name="CurrentTitle" FontFamily="Georgia" FontSize="32" TextWrapping="Wrap" Foreground="#EAF3E9" />
-                  <TextBlock x:Name="CurrentMetadata" FontSize="12" Foreground="#C1D8C6" TextWrapping="Wrap" />
-                </StackPanel>
-              </Button>
+              <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Button x:Name="CurrentTitleActions" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent" BorderThickness="0" IsTabStop="True">
+                  <StackPanel Spacing="13">
+                    <TextBlock x:Name="CurrentTitle" FontFamily="Georgia" FontSize="32" TextWrapping="Wrap" Foreground="#EAF3E9" />
+                    <TextBlock x:Name="CurrentMetadata" FontSize="12" Foreground="#C1D8C6" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="CurrentTaskOptions" Grid.Column="1" Style="{StaticResource TaskOptionsButton}" Visibility="Collapsed" />
+              </Grid>
 
               <Grid Grid.Row="3" ColumnSpacing="8" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

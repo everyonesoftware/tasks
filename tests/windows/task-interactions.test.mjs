@@ -11,7 +11,6 @@ test('completed disclosure is counted, keyboard accessible, and refresh-safe wit
   assert.ok(code.includes('Visible(completedDisclosure.IsExpanded)'));
 });
 test('dedicated details retain explicit guarded actions rather than implicitly selecting rows', () => {
-  assert.ok(code.includes('private Button OccurrenceRow('));
   for (const label of ['Make current', 'Mark done', 'Undo']) assert.ok(code.includes(`Content = "${label}"`));
   const actions = code.slice(code.indexOf('private void AddDetailActions'), code.indexOf('private static Button Row'));
   assert.match(actions, /if \(TaskActions.CanFocus\(client.State, occurrence, Today\)\)/);
@@ -27,12 +26,19 @@ test('single current title is a keyboard-accessible details button without chang
   assert.match(code, /OpenDetails\(current.TaskId, current.OccurrenceId\)/);
   assert.match(code, /currentButton\.ContextFlyout = null/);
 });
-test('each task surface has a native context menu, with no trailing link or ellipsis', () => {
-  assert.match(code, /AttachTaskMenu\(currentButton, current.TaskId, current\)/);
-  assert.match(code, /AttachTaskMenu\(button, occurrence.TaskId, occurrence\)/);
-  assert.match(code, /AttachTaskMenu\(row, task.Id, occurrence\)/);
+test('trailing task buttons open the same native flyout as right-click', () => {
+  assert.match(code, /AttachTaskMenu\(currentButton, currentOptions, current.TaskId, current\)/);
+  assert.match(code, /TaskRow\(button, occurrence.Title, occurrence.TaskId, occurrence\)/);
+  assert.match(code, /TaskRow\(row, task.Title, task.Id, occurrence\)/);
+  assert.match(code, /AttachTaskMenu\(button, options, taskId, occurrence\)/);
   assert.match(code, /button\.ContextFlyout = menu/);
-  assert.doesNotMatch(code + xaml, /View task →|⋯|CurrentOptions|WithOptions/);
+  assert.match(code, /options\.Flyout = menu/);
+  assert.match(xaml, /<Style x:Key="TaskOptionsButton"[^>]*>\s*<Setter Property="Content" Value="⋯"/);
+  assert.match(code, /SetName\(options, \$"Task actions for \{title\}"\)/);
+  assert.match(code, /Grid\.SetColumn\(options, 1\);\s*layout\.Children\.Add\(button\);\s*layout\.Children\.Add\(options\);/);
+  assert.match(xaml, /<\/Button>\s*<Button x:Name="CurrentTaskOptions" Grid.Column="1"[^>]*Visibility="Collapsed"[^>]*>/);
+  assert.match(code, /currentButton.ContextFlyout\?\.Hide\(\);\s*currentButton.ContextFlyout = null;\s*currentOptions.Flyout = null;\s*currentOptions.Visibility = Visibility.Collapsed;/);
+  assert.doesNotMatch(code + xaml, /View task →/);
   assert.match(xaml, /<Button x:Name="NotNow"[^>]*Content="Not now"/);
   assert.match(code, /Find<Button>\("NotNow"\)\.Click[\s\S]*?client.NotNow\(\)/);
 });

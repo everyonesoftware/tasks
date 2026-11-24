@@ -7,7 +7,7 @@ const xaml = read('Tasks.App/Shell.xaml');
 test('all primary activation surfaces open dedicated workspace details, never a focus mutation or action popup', () => {
   assert.match(xaml, /<StackPanel x:Name="TaskDetailsPanel"[^>]*Visibility="Collapsed"/);
   assert.match(code, /Find<Button>\("CurrentTitleActions"\)\.Click[\s\S]*?OpenDetails\(current.TaskId, current.OccurrenceId\)/);
-  const row = code.slice(code.indexOf('private Button OccurrenceRow('), code.indexOf('private void OpenDetails('));
+  const row = code.slice(code.indexOf('private Border OccurrenceRow('), code.indexOf('private Border TaskRow('));
   assert.match(row, /button.Click.*OpenDetails\(occurrence.TaskId, occurrence.OccurrenceId\)/);
   assert.doesNotMatch(row, /\.Flyout\s*=|client.Select/);
   assert.match(code, /row.Click.*OpenDetails\(task.Id, occurrence\?\.OccurrenceId\)/);

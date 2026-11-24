@@ -204,7 +204,7 @@ internal sealed class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private void AttachTaskMenu(Button button, string taskId, Occurrence? occurrence)
+    private void AttachTaskMenu(Button button, Button options, string taskId, Occurrence? occurrence)
     {
         var menu = new MenuFlyout();
         var state = client.State;
@@ -249,7 +249,11 @@ internal sealed class MainWindow : Window
         menu.Items.Add(edit);
         menu.Items.Add(delete);
         button.ContextFlyout = menu;
+        options.Flyout = menu;
     }
+
+    private static void NameTaskOptions(Button options, string title) =>
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(options, $"Task actions for {title}");
 
     private Task EditAsync(string taskId, string? occurrenceId = null)
     {
@@ -432,8 +436,12 @@ internal sealed class MainWindow : Window
         Find<TextBlock>("OfflineEndpoint").Text = client.Session is { } profile ? profile.Endpoint + "\n" + profile.Username : string.Empty;
         // Always clear detached native views too; hidden controls are not a task cache.
         var currentButton = Find<Button>("CurrentTitleActions");
+        var currentOptions = Find<Button>("CurrentTaskOptions");
         currentButton.ContextFlyout?.Hide();
         currentButton.ContextFlyout = null;
+        currentOptions.Flyout = null;
+        currentOptions.Visibility = Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentOptions, string.Empty);
         Find<StackPanel>("QueueList").Children.Clear();
         Find<StackPanel>("CompletedList").Children.Clear();
         Find<StackPanel>("ListPanel").Children.Clear();
@@ -493,7 +501,12 @@ internal sealed class MainWindow : Window
         {
             currentButton.Tag = FocusKey(current.TaskId, current.OccurrenceId);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentButton, current.Title);
-            if (listing && page == "today") AttachTaskMenu(currentButton, current.TaskId, current);
+            if (listing && page == "today")
+            {
+                AttachTaskMenu(currentButton, currentOptions, current.TaskId, current);
+                NameTaskOptions(currentOptions, current.Title);
+                currentOptions.Visibility = Visibility.Visible;
+            }
         }
         Find<TextBlock>("CurrentMetadata").Text = current is null ? string.Empty : Metadata(current);
 
@@ -529,8 +542,7 @@ internal sealed class MainWindow : Window
                 var row = Row(task.Title, metadata);
                 row.Tag = FocusKey(task.Id, occurrence?.OccurrenceId);
                 row.Click += (_, _) => OpenDetails(task.Id, occurrence?.OccurrenceId);
-                AttachTaskMenu(row, task.Id, occurrence);
-                Find<StackPanel>("ListPanel").Children.Add(row);
+                Find<StackPanel>("ListPanel").Children.Add(TaskRow(row, task.Title, task.Id, occurrence));
             }
             if (state.Tasks.Count == 0) Find<StackPanel>("ListPanel").Children.Add(Secondary("No tasks yet. Add your first task to get started."));
         }
@@ -571,13 +583,26 @@ internal sealed class MainWindow : Window
 
     private bool CanAct => !closed && !busy && !operations.IsEditorOpen && !operations.IsRestarting && client.IsConnected;
 
-    private Button OccurrenceRow(Occurrence occurrence, string metadata)
+    private Border OccurrenceRow(Occurrence occurrence, string metadata)
     {
         var button = Row(occurrence.Title, metadata);
         button.Tag = FocusKey(occurrence.TaskId, occurrence.OccurrenceId);
         button.Click += (_, _) => OpenDetails(occurrence.TaskId, occurrence.OccurrenceId);
-        AttachTaskMenu(button, occurrence.TaskId, occurrence);
-        return button;
+        return TaskRow(button, occurrence.Title, occurrence.TaskId, occurrence);
+    }
+
+    private Border TaskRow(Button button, string title, string taskId, Occurrence? occurrence)
+    {
+        var options = new Button { Style = (Style)root.Resources["TaskOptionsButton"] };
+        NameTaskOptions(options, title);
+        AttachTaskMenu(button, options, taskId, occurrence);
+        var layout = new Grid { ColumnSpacing = 8 };
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(options, 1);
+        layout.Children.Add(button);
+        layout.Children.Add(options);
+        return new Border { Child = layout, BorderBrush = Brush(59, 75, 80), BorderThickness = new Thickness(0, 0, 0, 1) };
     }
 
     private void OpenDetails(string taskId, string? occurrenceId)
@@ -709,8 +734,7 @@ internal sealed class MainWindow : Window
         {
             Content = stack, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(4, 13, 4, 13),
-            Background = new SolidColorBrush(Colors.Transparent), BorderBrush = Brush(59, 75, 80),
-            BorderThickness = new Thickness(0, 0, 0, 1), CornerRadius = new CornerRadius(0)
+            Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0)
         };
     }
 }
