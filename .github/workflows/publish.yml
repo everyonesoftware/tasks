@@ -59,6 +59,7 @@ jobs:
           node --test tests/deployment/windows_release_workflow.test.mjs
           node --test tests/deployment/selective-builds.test.mjs
           node --test tests/deployment/current-downloads.test.mjs
+          node --test tests/deployment/services_notification_workflow.test.mjs
       - name: Test Windows packaging and lifecycle helpers
         run: node --test tests/windows/*.test.mjs
 
@@ -93,11 +94,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up Node.js for Services payload capture
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-
       - name: Build and publish web and server image
         id: services_push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -112,29 +108,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-
       - name: Capture original Services publication metadata
         id: services_capture
         continue-on-error: true
-        env:
-          PUBLISHED_DIGEST: ${{ steps.services_push.outputs.digest }}
-          PUBLISHED_TAGS: ${{ steps.tags.outputs.tags }}
-          APP_VERSION: ${{ needs.validate.outputs.version }}
-          SERVICES_PUBLISH_PAYLOAD_PATH: ${{ runner.temp }}/services-publish/published.json
-        run: node scripts/publish-notification.mjs capture
-
-      - name: Retain original Services payload for notification-only retries
-        if: steps.services_capture.outcome == 'success'
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: everyonesoftware/workflows-common/actions/capture-image-v1@e7f98fea3c064e15ca3c7781c970627b4442da23
         with:
-          name: ${{ steps.services_capture.outputs.artifact }}
-          path: ${{ runner.temp }}/services-publish/published.json
-          if-no-files-found: error
-          retention-days: 30
-          overwrite: false
-          include-hidden-files: false
-          archive: true
+          digest: ${{ steps.services_push.outputs.digest }}
+          tags: ${{ steps.tags.outputs.tags }}
+          version: ${{ needs.validate.outputs.version }}
 
   android:
     if: needs.validate.outputs.build_android == 'true'
@@ -393,37 +374,16 @@ jobs:
   services_notify:
     name: Notify Services (publication remains separate)
     needs: container
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'release') && needs.container.result == 'success' && vars.SERVICES_PUBLISH_NOTIFICATIONS == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.container.result == 'success' && needs.container.outputs.services_artifact != '' && vars.SERVICES_PUBLISH_NOTIFICATIONS == 'true' }}
+    uses: everyonesoftware/workflows-common/.github/workflows/notify-image-v1.yml@e7f98fea3c064e15ca3c7781c970627b4442da23
     permissions:
       contents: read
       id-token: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-      - name: Require original payload artifact
-        env:
-          PAYLOAD_ARTIFACT: ${{ needs.container.outputs.services_artifact }}
-        run: test -n "$PAYLOAD_ARTIFACT"
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.container.outputs.services_artifact }}
-          path: ${{ runner.temp }}/services-publish
-          digest-mismatch: error
-      - uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ vars.TAILSCALE_CLIENT_ID }}
-          audience: ${{ vars.TAILSCALE_AUDIENCE }}
-          tags: ${{ vars.TAILSCALE_TAGS }}
-          log-mode: quiet
-      - name: Send the retained original payload without rebuilding
-        env:
-          SERVICES_PUBLISH_URL: ${{ vars.SERVICES_PUBLISH_URL }}
-          SERVICES_PUBLISH_TOKEN: ${{ secrets.SERVICES_PUBLISH_TOKEN }}
-          SERVICES_PUBLISH_PAYLOAD_PATH: ${{ runner.temp }}/services-publish/published.json
-        run: node scripts/publish-notification.mjs send
+    with:
+      artifact: ${{ needs.container.outputs.services_artifact }}
+      services-url: ${{ vars.SERVICES_PUBLISH_URL }}
+      tailscale-client-id: ${{ vars.TAILSCALE_CLIENT_ID }}
+      tailscale-audience: ${{ vars.TAILSCALE_AUDIENCE }}
+      tailscale-tags: ${{ vars.TAILSCALE_TAGS }}
+    secrets:
+      services-token: ${{ secrets.SERVICES_PUBLISH_TOKEN }}

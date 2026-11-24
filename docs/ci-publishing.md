@@ -70,6 +70,15 @@ visibility separately if anonymous pulls are wanted; this workflow does not chan
 organization/package visibility settings. The image includes both the Go server
 and web assets and retains its existing non-root runtime and private-data exclusions.
 
+The shared Services capture action retains the original container publication
+payload from the pushed digest, selected tags and commit-count version. A capture
+failure does not undo the image push. On a successful main-branch container job
+with a retained artifact, the separate shared notifier runs only when
+`SERVICES_PUBLISH_NOTIFICATIONS` is `true`. Rerunning that job sends the retained
+payload without rebuilding the image. The manual Services connection test is
+separate. Both shared callers must use the same reviewed `workflows-common` SHA;
+the initial local pilot uses a zero SHA placeholder and must not be pushed as-is.
+
 ## Android signing prerequisites
 
 Configure these repository Actions secrets before expecting a successful Android
